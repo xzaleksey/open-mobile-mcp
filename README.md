@@ -21,7 +21,7 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
       ```powershell
       powershell -Command "iwr -useb https://get.maestro.mobile.dev | iex"
       ```
-4.  **(Recommended) ADB Keyboard**: For the best text input experience on Android.
+4.  **(Recommended) ADB Keyboard**: Required _only_ for non-standard characters (Unicode, Cyrillic, Emoji). Standard English input works fine without it.
     - Download from [GitHub](https://github.com/senzhk/ADBKeyBoard).
     - Install: `adb install ADBKeyboard.apk`.
 
