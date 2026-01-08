@@ -61,15 +61,23 @@ export async function captureDiff(
   baselineBase64: string,
   currentBase64: string
 ): Promise<{ diffPercentage: number; diffImageBase64: string }> {
-  const img1 = PNG.sync.read(Buffer.from(baselineBase64, "base64"));
-  const img2 = PNG.sync.read(Buffer.from(currentBase64, "base64"));
+  const img1 = await Jimp.read(Buffer.from(baselineBase64, "base64"));
+  const img2 = await Jimp.read(Buffer.from(currentBase64, "base64"));
 
-  const { width, height } = img1;
+  const { width, height } = img1.bitmap;
+  // Ensure same dimensions or handle resize - for now assume roughly same or let pixelmatch handle/throw
+  if (
+    img1.bitmap.width !== img2.bitmap.width ||
+    img1.bitmap.height !== img2.bitmap.height
+  ) {
+    img2.resize(width, height);
+  }
+
   const diff = new PNG({ width, height });
 
   const numDiffPixels = pixelmatch(
-    img1.data,
-    img2.data,
+    img1.bitmap.data,
+    img2.bitmap.data,
     diff.data,
     width,
     height,
