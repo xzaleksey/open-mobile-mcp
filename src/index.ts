@@ -8,7 +8,7 @@ import {
 
 import { installDeps, runDoctor } from "./environment/doctor.js";
 import { manageAppLifecycle } from "./environment/lifecycle.js";
-import { manageBundler, streamErrors } from "./environment/metro.js";
+import { getLogs, manageBundler, streamErrors } from "./environment/metro.js";
 import { deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
 import { openDeepLink } from "./interaction/navigation.js";
@@ -148,6 +148,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ["action"],
+        },
+      },
+      {
+        name: "get_bundler_logs",
+        description: "Get recent logs from the Metro bundler (stdout/stderr).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            tailLength: {
+              type: "number",
+              description: "Number of lines to return (default 100)",
+            },
+          },
         },
       },
       {
@@ -374,6 +387,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     if (name === "stream_errors") {
       const output = streamErrors(safeArgs.tailLength);
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "get_bundler_logs") {
+      const output = getLogs(safeArgs.tailLength);
       return { content: [{ type: "text", text: output }] };
     }
     if (name === "run_doctor") {

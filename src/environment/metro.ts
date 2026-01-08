@@ -74,3 +74,7 @@ export function streamErrors(tailLength: number = 50): string {
   );
   return errorLogs.slice(-tailLength).join("\n");
 }
+
+export function getLogs(tailLength: number = 100): string {
+  return logBuffer.slice(-tailLength).join("\n");
+}

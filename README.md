@@ -56,12 +56,17 @@ Configure your MCP client (e.g., Claude Desktop, Cursor) to use this server:
 }
 
 > **Note**: On Windows, explicitly setting `MAESTRO_HOME` and `PATH` in the config is often required for the server to find the `maestro` executable.
-```
 
 ## Usage
 
 The server exposes the following tools to the LLM:
 
+- `get_bundler_logs`
+    - `tailLength` (optional, default 100): Number of lines to return.
+    - Usage: Get recent Metro logs (stdout+stderr), including normal app logs.
+- `stream_errors`
+    - `tailLength` (number): Number of error lines to retrieve.
+    - Usage: Get recent error/exception logs from Metro.
 - `get_connected_devices`: List all Android/iOS simulators and devices.
 - `device_type(deviceId, platform, text)`: Type text. Handles Unicode transparently.
 - `device_tap(deviceId, platform, x, y)`: Touch interactions.
@@ -79,3 +84,4 @@ The server exposes the following tools to the LLM:
 ## License
 
 MIT
+```
