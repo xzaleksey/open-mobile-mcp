@@ -64,7 +64,8 @@ The server exposes the following tools to the LLM:
 - **`manage_bundler`**
     - `action` (string): 'start', 'stop', or 'restart'.
     - `command` (optional string): Custom command (e.g. `npm run android:prod`). Default: `npx expo start`.
-    - Usage: Control the Metro bundler. The server captures stdout/stderr.
+    - `autoStartPlatformLogs` (optional boolean): Auto-start Android/iOS log capture (default true).
+    - Usage: Start the Metro bundler. Platform logs (adb logcat / xcrun) auto-start for complete debugging.
 - `get_bundler_logs`
     - `tailLength` (optional, default 100): Number of lines to return.
     - `source` (optional, default 'all'): Log source - 'metro', 'android', 'ios', or 'all'.
@@ -72,10 +73,10 @@ The server exposes the following tools to the LLM:
 - `manage_platform_logs`
     - `platform` (string): 'android' or 'ios'.
     - `action` (string): 'start' or 'stop'.
-    - Usage: Start/stop platform-specific log capture using native tools (adb logcat / xcrun).
+    - Usage: Manual control over platform log capture (optional - auto-starts with bundler).
 - `stream_errors`
     - `tailLength` (number): Number of error lines to retrieve.
-    - Usage: Get recent error/exception logs from Metro.
+    - Usage: Get recent error/exception logs from all sources (Metro + Android + iOS).
 - `get_connected_devices`: List all Android/iOS simulators and devices.
 - `device_type(deviceId, platform, text)`: Type text. Handles Unicode transparently.
 - `device_tap(deviceId, platform, x, y)`: Touch interactions.

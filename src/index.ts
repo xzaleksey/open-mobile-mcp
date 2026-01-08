@@ -137,7 +137,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "manage_bundler",
-        description: "Start, stop, or restart the Metro bundler.",
+        description: "Start, stop, or restart the Metro bundler. Platform logs (Android/iOS) auto-start by default.",
         inputSchema: {
           type: "object",
           properties: {
@@ -150,6 +150,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description:
                 "Optional custom command (e.g. 'npm run android'). Default: 'npx expo start'",
+            },
+            autoStartPlatformLogs: {
+              type: "boolean",
+              description: "Auto-start platform log capture (default true)",
             },
           },
           required: ["action"],
@@ -175,7 +179,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "stream_errors",
-        description: "Get recent error logs from the bundler.",
+        description: "Get recent error logs from Metro, Android, and iOS (all sources).",
         inputSchema: {
           type: "object",
           properties: {
@@ -185,7 +189,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "manage_platform_logs",
-        description: "Start or stop platform-specific log capture (Android/iOS).",
+        description: "Manually start/stop platform log capture (optional - auto-starts with bundler).",
         inputSchema: {
           type: "object",
           properties: {
@@ -419,7 +423,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const output = await manageBundler(
         safeArgs.action,
         safeArgs.projectPath,
-        safeArgs.command
+        safeArgs.command,
+        safeArgs.autoStartPlatformLogs
       );
       return { content: [{ type: "text", text: output }] };
     }
