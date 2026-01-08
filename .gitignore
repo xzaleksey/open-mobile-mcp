@@ -16,6 +16,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local History
+.history/
+
 # OS
 .DS_Store
 Thumbs.db
