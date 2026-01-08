@@ -61,6 +61,10 @@ Configure your MCP client (e.g., Claude Desktop, Cursor) to use this server:
 
 The server exposes the following tools to the LLM:
 
+- **`manage_bundler`**
+    - `action` (string): 'start', 'stop', or 'restart'.
+    - `command` (optional string): Custom command (e.g. `npm run android:prod`). Default: `npx expo start`.
+    - Usage: Control the Metro bundler. The server captures stdout/stderr.
 - `get_bundler_logs`
     - `tailLength` (optional, default 100): Number of lines to return.
     - Usage: Get recent Metro logs (stdout+stderr), including normal app logs.

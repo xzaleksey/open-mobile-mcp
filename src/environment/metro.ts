@@ -9,7 +9,8 @@ const MAX_LOG_LINES = 1000;
 
 export async function manageBundler(
   action: "start" | "stop" | "restart",
-  projectPath: string = process.cwd()
+  projectPath: string = process.cwd(),
+  command: string = "npx expo start"
 ): Promise<string> {
   if (action === "stop" || action === "restart") {
     if (metroProcess) {
@@ -39,8 +40,14 @@ export async function manageBundler(
 
   if (action === "start" || action === "restart") {
     // Start Metro
-    // We use 'npx expo start'
-    metroProcess = spawn("npx", ["expo", "start"], {
+    // Use provided command or default
+    // We need to split command into cmd and args for spawn
+    // Simple split by space (caveat: quoted args not supported in this simple version, but sufficient for 'npm run ios')
+    const parts = command.split(" ");
+    const cmd = parts[0];
+    const args = parts.slice(1);
+
+    metroProcess = spawn(cmd, args, {
       cwd: projectPath,
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
