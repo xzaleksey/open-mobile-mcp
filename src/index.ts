@@ -146,6 +146,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "Optional path to project root",
             },
+            command: {
+              type: "string",
+              description:
+                "Optional custom command (e.g. 'npm run android'). Default: 'npx expo start'",
+            },
           },
           required: ["action"],
         },
@@ -382,7 +387,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: "text", text: output }] };
     }
     if (name === "manage_bundler") {
-      const output = await manageBundler(safeArgs.action, safeArgs.projectPath);
+      const output = await manageBundler(
+        safeArgs.action,
+        safeArgs.projectPath,
+        safeArgs.command
+      );
       return { content: [{ type: "text", text: output }] };
     }
     if (name === "stream_errors") {
