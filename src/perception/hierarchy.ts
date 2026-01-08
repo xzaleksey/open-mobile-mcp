@@ -42,6 +42,7 @@ interface SimplifiedNode {
   bounds?: string;
   children?: SimplifiedNode[];
   clickable?: boolean;
+  enabled?: boolean;
 }
 
 function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
@@ -57,8 +58,8 @@ function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
     attributes["content-desc"] || attributes.accessibilityLabel || "";
   const bounds = attributes.bounds || attributes.frame || "";
   const type = attributes.class || attributes.elementType || "unknown";
-  const clickable =
-    attributes.clickable === "true" || attributes.enabled === "true"; // rough approx
+  const clickable = attributes.clickable === "true";
+  const enabled = attributes.enabled === "true";
 
   // Truncate long text
   if (text.length > 50) {
@@ -136,6 +137,7 @@ function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
     ...(contentDesc ? { contentDesc } : {}),
     ...(bounds ? { bounds } : {}),
     ...(clickable ? { clickable } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
   };
 
   if (children.length > 0) {

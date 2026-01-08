@@ -441,7 +441,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         safeArgs.selector,
         safeArgs.strategy
       );
-      return { content: [{ type: "text", text: output }] }; // Returns base64 string
+      return {
+        content: [
+          {
+            type: "image",
+            data: output,
+            mimeType: "image/png",
+          },
+        ],
+      };
     }
   } catch (error: any) {
     return {
