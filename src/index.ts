@@ -13,6 +13,11 @@ import { deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
 import { openDeepLink } from "./interaction/navigation.js";
 import { listDevices } from "./perception/device.js";
+import {
+  findElement,
+  getElementImage,
+  waitForElement,
+} from "./perception/element.js";
 import { getSemanticHierarchy } from "./perception/hierarchy.js";
 import { configureOcr, getScreenText } from "./perception/ocr.js";
 import { captureDiff, getViewport } from "./perception/screen.js";
@@ -242,6 +247,62 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["language"],
         },
       },
+      {
+        name: "find_element",
+        description:
+          "Find UI elements using a selector (testId, text, description).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            selector: { type: "string" },
+            strategy: {
+              type: "string",
+              enum: ["testId", "text", "contentDescription"],
+            },
+          },
+          required: ["deviceId", "platform", "selector", "strategy"],
+        },
+      },
+      {
+        name: "wait_for_element",
+        description: "Wait for a UI element to appear (polls every 1s).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            selector: { type: "string" },
+            strategy: {
+              type: "string",
+              enum: ["testId", "text", "contentDescription"],
+            },
+            timeout: {
+              type: "number",
+              description: "Timeout in ms (default 10000)",
+            },
+          },
+          required: ["deviceId", "platform", "selector", "strategy"],
+        },
+      },
+      {
+        name: "get_element_image",
+        description: "Get a cropped screenshot of a specific UI element.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            selector: { type: "string" },
+            strategy: {
+              type: "string",
+              enum: ["testId", "text", "contentDescription"],
+            },
+          },
+          required: ["deviceId", "platform", "selector", "strategy"],
+        },
+      },
     ],
   };
 });
@@ -351,6 +412,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "configure_ocr") {
       const output = configureOcr(safeArgs.language);
       return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "find_element") {
+      const output = await findElement(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.selector,
+        safeArgs.strategy
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+      };
+    }
+    if (name === "wait_for_element") {
+      const output = await waitForElement(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.selector,
+        safeArgs.strategy,
+        safeArgs.timeout
+      );
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "get_element_image") {
+      const output = await getElementImage(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.selector,
+        safeArgs.strategy
+      );
+      return { content: [{ type: "text", text: output }] }; // Returns base64 string
     }
   } catch (error: any) {
     return {
