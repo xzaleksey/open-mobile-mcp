@@ -28,7 +28,7 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/open-mobile-mcp.git
+git clone [https://github.com/your-username/open-mobile-mcp.git](https://github.com/xzaleksey/open-mobile-mcp.git)
 cd open-mobile-mcp
 npm install
 npm run build
