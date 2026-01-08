@@ -10,6 +10,7 @@ interface ElementNode {
   bounds?: string;
   children?: ElementNode[];
   clickable?: boolean;
+  enabled?: boolean;
 }
 
 export async function findElement(
