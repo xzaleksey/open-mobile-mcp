@@ -13,17 +13,20 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
 
 ## Prerequisites
 
-1.  **Node.js** (v18+)
-2.  **ADB** (Android Debug Bridge) installed and in your PATH.
-3.  **Maestro** (Recommended for iOS and fallback Android input).
-    - **Mac/Linux**: `curl -Ls "https://get.maestro.mobile.dev" | bash`
-    - **Windows**: See [Official Guide](https://docs.maestro.dev/getting-started/installing-maestro/windows)
-      ```powershell
-      powershell -Command "iwr -useb https://get.maestro.mobile.dev | iex"
-      ```
-4.  **(Recommended) ADB Keyboard**: Required _only_ for non-standard characters (Unicode, Cyrillic, Emoji). Standard English input works fine without it.
-    - Download from [GitHub](https://github.com/senzhk/ADBKeyBoard).
-    - Install: `adb install ADBKeyboard.apk`.
+1. **Node.js** (v18+)
+2. **ADB** (Android Debug Bridge) installed and in your PATH.
+3. **Maestro** (Recommended for iOS and fallback Android input).
+
+   - **Mac/Linux**: `curl -Ls "https://get.maestro.mobile.dev" | bash`
+   - **Windows**: See [Official Guide](https://docs.maestro.dev/getting-started/installing-maestro/windows)
+
+     ```powershell
+     powershell -Command "iwr -useb https://get.maestro.mobile.dev | iex"
+     ```
+
+4. **(Recommended) ADB Keyboard**: Required _only_ for non-standard characters (Unicode, Cyrillic, Emoji). Standard English input works fine without it.
+   - Download from [GitHub](https://github.com/senzhk/ADBKeyBoard).
+   - Install: `adb install ADBKeyboard.apk`.
 
 ## Installation
 
@@ -65,6 +68,10 @@ The server exposes the following tools to the LLM:
 - `device_swipe(...)`: Gestures.
 - `get_viewport(...)`: Get a compressed JPEG screenshot.
 - `get_semantic_hierarchy(...)`: Get a token-optimized UI tree.
+- `manage_app_lifecycle(action, deviceId, platform, target)`: App management (`launch`, `stop`, `install`, `uninstall`).
+- `open_deep_link(deviceId, platform, url)`: Universal deep linking (`adb shell am start` / `xcrun simctl openurl`).
+- `get_screen_text(deviceId, platform, language?)`: **OCR**. Get raw text from the screen using Tesseract.js. Supports multiple languages (default `eng`).
+- `configure_ocr(language)`: Set the default language for all future `get_screen_text` calls (e.g. `eng+fra`).
 
 ## License
 

@@ -7,11 +7,14 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { installDeps, runDoctor } from "./environment/doctor.js";
+import { manageAppLifecycle } from "./environment/lifecycle.js";
 import { manageBundler, streamErrors } from "./environment/metro.js";
 import { deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
+import { openDeepLink } from "./interaction/navigation.js";
 import { listDevices } from "./perception/device.js";
 import { getSemanticHierarchy } from "./perception/hierarchy.js";
+import { configureOcr, getScreenText } from "./perception/ocr.js";
 import { captureDiff, getViewport } from "./perception/screen.js";
 
 const server = new Server(
@@ -174,6 +177,71 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["packages"],
         },
       },
+
+      {
+        name: "manage_app_lifecycle",
+        description: "Launch, stop, install, or uninstall apps.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              enum: ["launch", "stop", "install", "uninstall"],
+            },
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            target: {
+              type: "string",
+              description: "Package ID/Bundle ID or file path",
+            },
+          },
+          required: ["action", "deviceId", "platform", "target"],
+        },
+      },
+      {
+        name: "open_deep_link",
+        description: "Open a deep link or URL on the device.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            url: { type: "string" },
+          },
+          required: ["deviceId", "platform", "url"],
+        },
+      },
+      {
+        name: "get_screen_text",
+        description: "Get all text visible on screen using OCR.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            language: {
+              type: "string",
+              description:
+                "OCR language code (e.g. 'eng', 'fra', 'deu'). Default: 'eng'",
+            },
+          },
+          required: ["deviceId", "platform"],
+        },
+      },
+      {
+        name: "configure_ocr",
+        description: "Set the default OCR language for the session.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            language: {
+              type: "string",
+              description: "Language code(s), e.g., 'eng', 'eng+fra', 'jpa'.",
+            },
+          },
+          required: ["language"],
+        },
+      },
     ],
   };
 });
@@ -253,6 +321,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     if (name === "install_deps") {
       const output = await installDeps(safeArgs.packages, safeArgs.projectPath);
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "manage_app_lifecycle") {
+      const output = await manageAppLifecycle(
+        safeArgs.action,
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.target
+      );
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "open_deep_link") {
+      const output = await openDeepLink(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.url
+      );
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "get_screen_text") {
+      const output = await getScreenText(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.language
+      );
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "configure_ocr") {
+      const output = configureOcr(safeArgs.language);
       return { content: [{ type: "text", text: output }] };
     }
   } catch (error: any) {
