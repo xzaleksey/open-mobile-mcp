@@ -8,7 +8,7 @@ import {
 
 import { installDeps, runDoctor } from "./environment/doctor.js";
 import { manageAppLifecycle } from "./environment/lifecycle.js";
-import { getLogs, manageBundler, streamErrors } from "./environment/metro.js";
+import { getLogs, manageBundler, managePlatformLogs, streamErrors } from "./environment/metro.js";
 import { deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
 import { openDeepLink } from "./interaction/navigation.js";
@@ -157,13 +157,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "get_bundler_logs",
-        description: "Get recent logs from the Metro bundler (stdout/stderr).",
+        description: "Get recent logs from Metro bundler, Android, or iOS.",
         inputSchema: {
           type: "object",
           properties: {
             tailLength: {
               type: "number",
               description: "Number of lines to return (default 100)",
+            },
+            source: {
+              type: "string",
+              enum: ["metro", "android", "ios", "all"],
+              description: "Log source: 'metro', 'android', 'ios', or 'all' (default 'all')",
             },
           },
         },
@@ -176,6 +181,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             tailLength: { type: "number" },
           },
+        },
+      },
+      {
+        name: "manage_platform_logs",
+        description: "Start or stop platform-specific log capture (Android/iOS).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            platform: {
+              type: "string",
+              enum: ["android", "ios"],
+              description: "Platform to capture logs from",
+            },
+            action: {
+              type: "string",
+              enum: ["start", "stop"],
+              description: "Start or stop log capture",
+            },
+            projectPath: {
+              type: "string",
+              description: "Optional path to project root",
+            },
+          },
+          required: ["platform", "action"],
         },
       },
       {
@@ -399,11 +428,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: "text", text: output }] };
     }
     if (name === "get_bundler_logs") {
-      const output = getLogs(safeArgs.tailLength);
+      const output = getLogs(safeArgs.tailLength, safeArgs.source);
       return { content: [{ type: "text", text: output }] };
     }
     if (name === "run_doctor") {
       const output = await runDoctor(safeArgs.projectPath);
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "manage_platform_logs") {
+      const output = await managePlatformLogs(
+        safeArgs.platform,
+        safeArgs.action,
+        safeArgs.projectPath
+      );
       return { content: [{ type: "text", text: output }] };
     }
     if (name === "install_deps") {

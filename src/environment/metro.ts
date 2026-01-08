@@ -4,7 +4,12 @@ import { promisify } from "util";
 const execAsync = promisify(exec);
 
 let metroProcess: ChildProcess | null = null;
+let androidLogProcess: ChildProcess | null = null;
+let iosLogProcess: ChildProcess | null = null;
+
 const logBuffer: string[] = [];
+const androidLogBuffer: string[] = [];
+const iosLogBuffer: string[] = [];
 const MAX_LOG_LINES = 1000;
 
 export async function manageBundler(
@@ -50,19 +55,35 @@ export async function manageBundler(
     metroProcess = spawn(cmd, args, {
       cwd: projectPath,
       shell: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        FORCE_COLOR: "1",
+        TERM: "xterm-256color",
+      },
     });
 
+    // Close stdin to prevent process from hanging waiting for input
+    metroProcess.stdin?.end();
+
     metroProcess.stdout?.on("data", (data) => {
-      const output = data.toString();
-      logBuffer.push(output);
-      if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift();
+      const lines = data.toString().split(/\r?\n/);
+      for (const line of lines) {
+        if (line) {
+          logBuffer.push(line);
+          if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift();
+        }
+      }
     });
 
     metroProcess.stderr?.on("data", (data) => {
-      const output = data.toString();
-      logBuffer.push(output);
-      if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift();
+      const lines = data.toString().split(/\r?\n/);
+      for (const line of lines) {
+        if (line) {
+          logBuffer.push(line);
+          if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift();
+        }
+      }
     });
 
     return "Bundler started on port 8081.";
@@ -71,9 +92,101 @@ export async function manageBundler(
   return "Invalid action.";
 }
 
+export async function managePlatformLogs(
+  platform: "android" | "ios",
+  action: "start" | "stop",
+  projectPath: string = process.cwd()
+): Promise<string> {
+  const logProcess = platform === "android" ? androidLogProcess : iosLogProcess;
+  const logBuffer = platform === "android" ? androidLogBuffer : iosLogBuffer;
+
+  // Use native commands instead of react-native CLI
+  const command =
+    platform === "android"
+      ? "adb logcat *:S ReactNative:V ReactNativeJS:V"
+      : "xcrun simctl spawn booted log stream --predicate 'process == \"SpringBoard\" OR processImagePath CONTAINS \"app\"'";
+
+  if (action === "stop") {
+    if (logProcess) {
+      logProcess.kill();
+      if (platform === "android") {
+        androidLogProcess = null;
+      } else {
+        iosLogProcess = null;
+      }
+    }
+    return `${platform} log capture stopped.`;
+  }
+
+  if (action === "start") {
+    if (logProcess) {
+      return `${platform} log capture is already running.`;
+    }
+
+    const parts = command.split(" ");
+    const cmd = parts[0];
+    const args = parts.slice(1);
+
+    const platformLogProcess = spawn(cmd, args, {
+      cwd: projectPath,
+      shell: true,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        FORCE_COLOR: "0",
+      },
+    });
+
+    platformLogProcess.stdin?.end();
+
+    platformLogProcess.stdout?.on("data", (data) => {
+      const lines = data.toString().split(/\r?\n/);
+      for (const line of lines) {
+        if (line) {
+          logBuffer.push(line);
+          if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift();
+        }
+      }
+    });
+
+    platformLogProcess.stderr?.on("data", (data) => {
+      const lines = data.toString().split(/\r?\n/);
+      for (const line of lines) {
+        if (line) {
+          logBuffer.push(line);
+          if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift();
+        }
+      }
+    });
+
+    platformLogProcess.on("exit", () => {
+      if (platform === "android") {
+        androidLogProcess = null;
+      } else {
+        iosLogProcess = null;
+      }
+    });
+
+    if (platform === "android") {
+      androidLogProcess = platformLogProcess;
+    } else {
+      iosLogProcess = platformLogProcess;
+    }
+
+    return `${platform} log capture started.`;
+  }
+
+  return "Invalid action.";
+}
+
 export function streamErrors(tailLength: number = 50): string {
-  // Filter for errors
-  const errorLogs = logBuffer.filter(
+  // Filter for errors across all logs
+  const allLogs = [
+    ...logBuffer,
+    ...androidLogBuffer,
+    ...iosLogBuffer,
+  ];
+  const errorLogs = allLogs.filter(
     (line) =>
       line.toLowerCase().includes("error") ||
       line.toLowerCase().includes("exception") ||
@@ -82,6 +195,25 @@ export function streamErrors(tailLength: number = 50): string {
   return errorLogs.slice(-tailLength).join("\n");
 }
 
-export function getLogs(tailLength: number = 100): string {
-  return logBuffer.slice(-tailLength).join("\n");
+export function getLogs(
+  tailLength: number = 100,
+  source: "metro" | "android" | "ios" | "all" = "all"
+): string {
+  switch (source) {
+    case "metro":
+      return logBuffer.slice(-tailLength).join("\n");
+    case "android":
+      return androidLogBuffer.slice(-tailLength).join("\n");
+    case "ios":
+      return iosLogBuffer.slice(-tailLength).join("\n");
+    case "all":
+      const allLogs = [
+        ...logBuffer.map((line) => `[Metro] ${line}`),
+        ...androidLogBuffer.map((line) => `[Android] ${line}`),
+        ...iosLogBuffer.map((line) => `[iOS] ${line}`),
+      ];
+      return allLogs.slice(-tailLength).join("\n");
+    default:
+      return logBuffer.slice(-tailLength).join("\n");
+  }
 }
