@@ -32,3 +32,8 @@ tmp/
 temp/
 *.tmp
 *.temp
+
+# Tesseract
+*.traineddata
+eng.traineddata.gz
+rus.traineddata.gz
