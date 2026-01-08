@@ -72,6 +72,9 @@ The server exposes the following tools to the LLM:
 - `open_deep_link(deviceId, platform, url)`: Universal deep linking (`adb shell am start` / `xcrun simctl openurl`).
 - `get_screen_text(deviceId, platform, language?)`: **OCR**. Get raw text from the screen using Tesseract.js. Supports multiple languages (default `eng`).
 - `configure_ocr(language)`: Set the default language for all future `get_screen_text` calls (e.g. `eng+fra`).
+- `find_element(selector, strategy)`: Find UI elements by `testId` (resource-id), `text`, or `contentDescription`. Returns bounds/visibility.
+- `wait_for_element(selector, strategy, timeout)`: Server-side polling to wait for an element to appear.
+- `get_element_image(selector, strategy)`: Get a cropped screenshot of just the specific element (useful for visual verification).
 
 ## License
 

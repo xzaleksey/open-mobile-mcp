@@ -26,20 +26,33 @@ async function getIosScreenshot(deviceId: string): Promise<Buffer> {
   return stdout;
 }
 
+export async function getRawScreenshotBuffer(
+  deviceId: string,
+  platform: "android" | "ios"
+): Promise<Buffer> {
+  if (platform === "android") {
+    return getAndroidScreenshot(deviceId);
+  } else {
+    return getIosScreenshot(deviceId);
+  }
+}
+
 export async function getViewport(
   deviceId: string,
   platform: "android" | "ios"
-): Promise<{ imageBase64: string; width: number; height: number }> {
-  let rawBuffer: Buffer;
-
-  if (platform === "android") {
-    rawBuffer = await getAndroidScreenshot(deviceId);
-  } else {
-    rawBuffer = await getIosScreenshot(deviceId);
-  }
+): Promise<{
+  imageBase64: string;
+  width: number;
+  height: number;
+  originalWidth: number;
+  originalHeight: number;
+}> {
+  let rawBuffer = await getRawScreenshotBuffer(deviceId, platform);
 
   // Resize using Jimp
   const image = await Jimp.read(rawBuffer);
+  const originalWidth = image.bitmap.width;
+  const originalHeight = image.bitmap.height;
 
   // Resize if width > 800, keeping aspect ratio
   if (image.bitmap.width > 800) {
@@ -54,6 +67,8 @@ export async function getViewport(
     imageBase64: base64,
     width: image.bitmap.width,
     height: image.bitmap.height,
+    originalWidth,
+    originalHeight,
   };
 }
 
