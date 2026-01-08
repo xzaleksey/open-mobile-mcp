@@ -67,7 +67,12 @@ The server exposes the following tools to the LLM:
     - Usage: Control the Metro bundler. The server captures stdout/stderr.
 - `get_bundler_logs`
     - `tailLength` (optional, default 100): Number of lines to return.
-    - Usage: Get recent Metro logs (stdout+stderr), including normal app logs.
+    - `source` (optional, default 'all'): Log source - 'metro', 'android', 'ios', or 'all'.
+    - Usage: Get recent logs from Metro bundler, Android (adb logcat), or iOS. When 'all', logs are prefixed with [Metro], [Android], or [iOS].
+- `manage_platform_logs`
+    - `platform` (string): 'android' or 'ios'.
+    - `action` (string): 'start' or 'stop'.
+    - Usage: Start/stop platform-specific log capture using native tools (adb logcat / xcrun).
 - `stream_errors`
     - `tailLength` (number): Number of error lines to retrieve.
     - Usage: Get recent error/exception logs from Metro.
