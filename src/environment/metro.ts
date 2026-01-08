@@ -10,7 +10,7 @@ let iosLogProcess: ChildProcess | null = null;
 const logBuffer: string[] = [];
 const androidLogBuffer: string[] = [];
 const iosLogBuffer: string[] = [];
-const MAX_LOG_LINES = 1000;
+const MAX_LOG_LINES = 10000;
 
 export async function manageBundler(
   action: "start" | "stop" | "restart",
@@ -104,7 +104,7 @@ export async function managePlatformLogs(
   const command =
     platform === "android"
       ? "adb logcat *:S ReactNative:V ReactNativeJS:V"
-      : "xcrun simctl spawn booted log stream --predicate 'process == \"SpringBoard\" OR processImagePath CONTAINS \"app\"'";
+      : 'xcrun simctl spawn booted log stream --predicate \'process == "SpringBoard" OR processImagePath CONTAINS "app"\'';
 
   if (action === "stop") {
     if (logProcess) {
@@ -181,11 +181,7 @@ export async function managePlatformLogs(
 
 export function streamErrors(tailLength: number = 50): string {
   // Filter for errors across all logs
-  const allLogs = [
-    ...logBuffer,
-    ...androidLogBuffer,
-    ...iosLogBuffer,
-  ];
+  const allLogs = [...logBuffer, ...androidLogBuffer, ...iosLogBuffer];
   const errorLogs = allLogs.filter(
     (line) =>
       line.toLowerCase().includes("error") ||
