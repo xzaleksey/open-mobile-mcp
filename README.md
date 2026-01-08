@@ -16,7 +16,11 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
 1.  **Node.js** (v18+)
 2.  **ADB** (Android Debug Bridge) installed and in your PATH.
 3.  **Maestro** (Recommended for iOS and fallback Android input).
-    - Install via: `curl -Ls "https://get.maestro.mobile.dev" | bash` (or PowerShell equivalent).
+    - **Mac/Linux**: `curl -Ls "https://get.maestro.mobile.dev" | bash`
+    - **Windows**: See [Official Guide](https://docs.maestro.dev/getting-started/installing-maestro/windows)
+      ```powershell
+      powershell -Command "iwr -useb https://get.maestro.mobile.dev | iex"
+      ```
 4.  **(Recommended) ADB Keyboard**: For the best text input experience on Android.
     - Download from [GitHub](https://github.com/senzhk/ADBKeyBoard).
     - Install: `adb install ADBKeyboard.apk`.
@@ -39,10 +43,16 @@ Configure your MCP client (e.g., Claude Desktop, Cursor) to use this server:
   "mcpServers": {
     "open-mobile-mcp": {
       "command": "node",
-      "args": ["/absolute/path/to/open-mobile-mcp/build/index.js"]
+      "args": ["C:\\path\\to\\open-mobile-mcp\\build\\index.js"],
+      "env": {
+        "MAESTRO_HOME": "C:\\Users\\YOUR_USER\\.maestro",
+        "PATH": "C:\\Users\\YOUR_USER\\.maestro\\maestro\\bin;C:\\Windows\\system32;C:\\Windows;..."
+      }
     }
   }
 }
+
+> **Note**: On Windows, explicitly setting `MAESTRO_HOME` and `PATH` in the config is often required for the server to find the `maestro` executable.
 ```
 
 ## Usage
