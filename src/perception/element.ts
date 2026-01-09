@@ -1,6 +1,7 @@
 import Jimp from "jimp";
 import { getSemanticHierarchy } from "./hierarchy.js";
 import { getRawScreenshotBuffer } from "./screen.js";
+import { deviceTap, deviceSwipe } from "../interaction/input.js";
 
 interface ElementNode {
   type: string;
@@ -13,16 +14,62 @@ interface ElementNode {
   enabled?: boolean;
 }
 
+/** Element with parsed coordinates for easy use */
+export interface ElementWithCoordinates extends Omit<ElementNode, "children"> {
+  // Parsed from bounds
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
+  centerX?: number;
+  centerY?: number;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Parse bounds string "[left,top][right,bottom]" into coordinates
+ */
+export function parseBounds(bounds: string): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+} | null {
+  const match = bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+  if (!match) return null;
+
+  const left = parseInt(match[1]);
+  const top = parseInt(match[2]);
+  const right = parseInt(match[3]);
+  const bottom = parseInt(match[4]);
+
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    centerX: Math.round((left + right) / 2),
+    centerY: Math.round((top + bottom) / 2),
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
 export async function findElement(
   deviceId: string,
   platform: "android" | "ios",
   selector: string,
   strategy: "testId" | "text" | "contentDescription"
-): Promise<ElementNode[]> {
+): Promise<ElementWithCoordinates[]> {
   const root = await getSemanticHierarchy(deviceId, platform);
   if (!root) return [];
 
-  const matches: ElementNode[] = [];
+  const matches: ElementWithCoordinates[] = [];
 
   function traverse(node: ElementNode) {
     let match = false;
@@ -48,9 +95,26 @@ export async function findElement(
     }
 
     if (match) {
-      // Return a copy without children to keep result minimal
+      // Return a copy without children, with parsed coordinates
       const { children, ...cleanNode } = node;
-      matches.push(cleanNode);
+      const elementWithCoords: ElementWithCoordinates = { ...cleanNode };
+
+      // Parse bounds and add coordinates
+      if (cleanNode.bounds) {
+        const parsed = parseBounds(cleanNode.bounds);
+        if (parsed) {
+          elementWithCoords.left = parsed.left;
+          elementWithCoords.top = parsed.top;
+          elementWithCoords.right = parsed.right;
+          elementWithCoords.bottom = parsed.bottom;
+          elementWithCoords.centerX = parsed.centerX;
+          elementWithCoords.centerY = parsed.centerY;
+          elementWithCoords.width = parsed.width;
+          elementWithCoords.height = parsed.height;
+        }
+      }
+
+      matches.push(elementWithCoords);
     }
 
     if (node.children) {
@@ -132,4 +196,150 @@ export async function getElementImage(
 
   const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
   return buffer.toString("base64");
+}
+
+/**
+ * Find an element and tap on its center. Most reliable way to interact with UI.
+ */
+export async function tapOnElement(
+  deviceId: string,
+  platform: "android" | "ios",
+  selector: string,
+  strategy: "testId" | "text" | "contentDescription"
+): Promise<{
+  success: boolean;
+  element: ElementWithCoordinates;
+  message: string;
+}> {
+  const elements = await findElement(deviceId, platform, selector, strategy);
+
+  if (elements.length === 0) {
+    throw new Error(
+      `Element not found with ${strategy}="${selector}". Try using get_semantic_hierarchy to see available elements.`
+    );
+  }
+
+  const element = elements[0];
+
+  if (element.centerX === undefined || element.centerY === undefined) {
+    throw new Error(
+      `Element "${selector}" found but has no valid bounds for tapping.`
+    );
+  }
+
+  // Tap on the center of the element
+  await deviceTap(deviceId, platform, element.centerX, element.centerY);
+
+  return {
+    success: true,
+    element,
+    message: `Tapped on "${element.text || selector}" at (${element.centerX}, ${
+      element.centerY
+    })`,
+  };
+}
+
+/**
+ * Scroll in a direction until an element is found, or timeout.
+ * Useful for elements that are off-screen.
+ */
+export async function scrollToElement(
+  deviceId: string,
+  platform: "android" | "ios",
+  selector: string,
+  strategy: "testId" | "text" | "contentDescription",
+  direction: "up" | "down" | "left" | "right" = "down",
+  maxScrolls: number = 5,
+  scrollDurationMs: number = 300
+): Promise<{
+  success: boolean;
+  element: ElementWithCoordinates;
+  scrollCount: number;
+}> {
+  // First check if element is already visible
+  let elements = await findElement(deviceId, platform, selector, strategy);
+  if (elements.length > 0) {
+    return { success: true, element: elements[0], scrollCount: 0 };
+  }
+
+  // Get screen dimensions for scroll coordinates
+  // For iOS, use points (hierarchy coordinates), not pixels
+  // iOS Retina displays have 3x scale, so we use smaller coordinates
+  const { getViewport } = await import("./screen.js");
+  const viewport = await getViewport(deviceId, platform);
+
+  // iOS uses points (typically 1/3 of pixels for 3x Retina)
+  // Android uses actual pixels
+  const scaleFactor = platform === "ios" ? 3 : 1;
+  const screenWidth = Math.round(viewport.originalWidth / scaleFactor);
+  const screenHeight = Math.round(viewport.originalHeight / scaleFactor);
+
+  const centerX = Math.round(screenWidth / 2);
+  const centerY = Math.round(screenHeight / 2);
+
+  // Calculate scroll vectors (swipe in opposite direction of desired scroll)
+  const scrollDistance = Math.round(screenHeight / 3);
+  let swipeCoords: { x1: number; y1: number; x2: number; y2: number };
+
+  switch (direction) {
+    case "down": // Swipe up to scroll down
+      swipeCoords = {
+        x1: centerX,
+        y1: centerY + scrollDistance / 2,
+        x2: centerX,
+        y2: centerY - scrollDistance / 2,
+      };
+      break;
+    case "up": // Swipe down to scroll up
+      swipeCoords = {
+        x1: centerX,
+        y1: centerY - scrollDistance / 2,
+        x2: centerX,
+        y2: centerY + scrollDistance / 2,
+      };
+      break;
+    case "right": // Swipe left to scroll right
+      swipeCoords = {
+        x1: centerX + scrollDistance / 2,
+        y1: centerY,
+        x2: centerX - scrollDistance / 2,
+        y2: centerY,
+      };
+      break;
+    case "left": // Swipe right to scroll left
+      swipeCoords = {
+        x1: centerX - scrollDistance / 2,
+        y1: centerY,
+        x2: centerX + scrollDistance / 2,
+        y2: centerY,
+      };
+      break;
+  }
+
+  for (let i = 0; i < maxScrolls; i++) {
+    // Perform swipe
+    await deviceSwipe(
+      deviceId,
+      platform,
+      swipeCoords.x1,
+      swipeCoords.y1,
+      swipeCoords.x2,
+      swipeCoords.y2
+    );
+
+    // Wait for scroll animation and Maestro to fully complete
+    // iOS/Maestro needs longer delays between commands to avoid getting stuck
+    const delayMs = platform === "ios" ? 1500 : scrollDurationMs + 200;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    // Check if element is now visible
+    elements = await findElement(deviceId, platform, selector, strategy);
+    if (elements.length > 0) {
+      return { success: true, element: elements[0], scrollCount: i + 1 };
+    }
+  }
+
+  throw new Error(
+    `Element "${selector}" not found after ${maxScrolls} scrolls ${direction}. It may not exist or be in a different scroll direction.`
+  );
 }
