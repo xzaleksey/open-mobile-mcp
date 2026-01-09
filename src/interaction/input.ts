@@ -28,10 +28,11 @@ export async function deviceTap(
     await execAsync(`adb -s ${deviceId} shell input tap ${x} ${y}`);
   } else {
     // iOS tap via Maestro flow
+    // Note: Maestro expects point as a quoted string "x, y"
     const flowYaml = `
 ---
 - tapOn:
-    point: ${x},${y}
+    point: "${x}, ${y}"
 `;
     await runMaestroFlow(deviceId, flowYaml);
   }
@@ -195,11 +196,12 @@ export async function deviceSwipe(
       `adb -s ${deviceId} shell input swipe ${x1} ${y1} ${x2} ${y2}`
     );
   } else {
+    // Maestro expects coordinates as quoted strings "x, y"
     const flowYaml = `
 ---
 - swipe:
-    start: ${x1},${y1}
-    end: ${x2},${y2}
+    start: "${x1}, ${y1}"
+    end: "${x2}, ${y2}"
 `;
     await runMaestroFlow(deviceId, flowYaml);
   }

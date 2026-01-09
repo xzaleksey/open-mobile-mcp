@@ -20,10 +20,10 @@ async function getAndroidHierarchy(deviceId: string): Promise<string> {
 }
 
 async function getIosHierarchy(deviceId: string): Promise<string> {
-  // Attempt to use maestro hierarchy if available, as 'xcrun simctl' is limited
+  // Use maestro hierarchy which outputs JSON for iOS
   try {
     const { stdout } = await execAsync(
-      `maestro hierarchy --device ${deviceId}`
+      `maestro --device ${deviceId} hierarchy`
     );
     return stdout;
   } catch (e) {
@@ -43,23 +43,66 @@ interface SimplifiedNode {
   children?: SimplifiedNode[];
   clickable?: boolean;
   enabled?: boolean;
+  focused?: boolean;
+  selected?: boolean;
 }
 
-function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
-  // Logic to simplify the XML node
-  // Android nodes usually have attributes like 'text', 'resource-id', 'content-desc', 'class'
-  // iOS (Maestro) might use 'label', 'identifier', 'value'
+/**
+ * Maestro iOS TreeNode structure from JSON output:
+ * {
+ *   attributes: { [key: string]: string },
+ *   children: TreeNode[],
+ *   clickable?: boolean,
+ *   enabled?: boolean,
+ *   focused?: boolean,
+ *   checked?: boolean,
+ *   selected?: boolean
+ * }
+ *
+ * Common attributes from iOS:
+ * - accessibilityText (label)
+ * - title
+ * - value
+ * - text
+ * - hintText (placeholder)
+ * - resource-id (identifier)
+ * - bounds (format: "[left,top][right,bottom]")
+ * - enabled, focused, selected, checked
+ */
+interface MaestroTreeNode {
+  attributes?: { [key: string]: string };
+  children?: MaestroTreeNode[];
+  clickable?: boolean;
+  enabled?: boolean;
+  focused?: boolean;
+  checked?: boolean;
+  selected?: boolean;
+}
 
-  // Abstract attributes
-  const attributes = node.$ || {};
-  let text = attributes.text || attributes.label || attributes.value || "";
-  const resourceId = attributes["resource-id"] || attributes.identifier || "";
-  const contentDesc =
-    attributes["content-desc"] || attributes.accessibilityLabel || "";
-  const bounds = attributes.bounds || attributes.frame || "";
-  const type = attributes.class || attributes.elementType || "unknown";
-  const clickable = attributes.clickable === "true";
-  const enabled = attributes.enabled === "true";
+function pruneAndSimplifyMaestroNode(
+  node: MaestroTreeNode,
+  depth: number = 0
+): SimplifiedNode | null {
+  const attributes = node.attributes || {};
+
+  // Extract text from various iOS/Maestro attributes
+  let text =
+    attributes.text ||
+    attributes.accessibilityText ||
+    attributes.title ||
+    attributes.value ||
+    "";
+  const resourceId = attributes["resource-id"] || "";
+  const contentDesc = attributes.accessibilityText || attributes.hintText || "";
+  const bounds = attributes.bounds || "";
+
+  // Type is not directly provided in Maestro output, use a generic type or derive from attributes
+  const type = "UIElement";
+
+  const clickable = node.clickable === true;
+  const enabled = node.enabled === true;
+  const focused = node.focused === true;
+  const selected = node.selected === true;
 
   // Truncate long text
   if (text.length > 50) {
@@ -68,21 +111,14 @@ function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
 
   const children: SimplifiedNode[] = [];
 
-  if (node.node) {
-    for (const child of node.node) {
-      const result = pruneAndSimplify(child, depth + 1);
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      const result = pruneAndSimplifyMaestroNode(child, depth + 1);
       if (result) {
         children.push(result);
       }
     }
   }
-
-  // Stricter Filter Logic & Flattening:
-  // We keep a node if:
-  // 1. It is directly interactive (clickable)
-  // 2. It has semantic content (text or contentDesc)
-  // 3. It has attributes that might be critical for identification (resourceId) AND has children (implied structural container)
-  //    OR it is a leaf with resourceId (often a specific UI element without text).
 
   const hasContent = text || contentDesc;
   const isLeaf = children.length === 0;
@@ -94,10 +130,7 @@ function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
     const isGeneric = !resourceId && !hasContent;
     const child = children[0];
 
-    // If parent is generic:
     if (isGeneric) {
-      // If parent is clickable, we only collapse if child is ALSO clickable (so we don't handle clicks)
-      // OR if parent is NOT clickable (just structure).
       if (
         !clickable ||
         (clickable &&
@@ -105,7 +138,7 @@ function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
             child.type.includes("Button") ||
             child.type.includes("Text")))
       ) {
-        return child; // Return the child, effectively deleting this parent node
+        return child;
       }
     }
   }
@@ -118,15 +151,87 @@ function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
     }
   }
 
-  // If it's a container (has children), we generally keep it if it has some identity,
-  // BUT we can flatten if it adds nothing.
-  // For now, let's keep it simple: if it has children, we keep it to preserve structure,
-  // unless it's completely anonymous AND not clickable.
-  if (!isLeaf) {
-    const isAnonymous = !resourceId && !hasContent && !clickable;
-    if (isAnonymous) {
-      // Check if this anonymous container is just wrapping other nodes.
-      // We'll keep it for now as a structural element if it has >1 children.
+  const simpleNode: SimplifiedNode = {
+    type,
+    ...(text ? { text } : {}),
+    ...(resourceId ? { resourceId } : {}),
+    ...(contentDesc ? { contentDesc } : {}),
+    ...(bounds ? { bounds } : {}),
+    ...(clickable ? { clickable } : {}),
+    ...(enabled ? { enabled } : {}),
+    ...(focused ? { focused } : {}),
+    ...(selected ? { selected } : {}),
+  };
+
+  if (children.length > 0) {
+    simpleNode.children = children;
+  }
+
+  return simpleNode;
+}
+
+function pruneAndSimplifyAndroidNode(
+  node: any,
+  depth: number = 0
+): SimplifiedNode | null {
+  // Logic to simplify the XML node
+  // Android nodes usually have attributes like 'text', 'resource-id', 'content-desc', 'class'
+
+  const attributes = node.$ || {};
+  let text = attributes.text || "";
+  const resourceId = attributes["resource-id"] || "";
+  const contentDesc = attributes["content-desc"] || "";
+  const bounds = attributes.bounds || "";
+  const type = attributes.class || "unknown";
+  const clickable = attributes.clickable === "true";
+  const enabled = attributes.enabled === "true";
+  const focused = attributes.focused === "true";
+  const selected = attributes.selected === "true";
+
+  // Truncate long text
+  if (text.length > 50) {
+    text = text.substring(0, 50) + "...";
+  }
+
+  const children: SimplifiedNode[] = [];
+
+  if (node.node) {
+    for (const child of node.node) {
+      const result = pruneAndSimplifyAndroidNode(child, depth + 1);
+      if (result) {
+        children.push(result);
+      }
+    }
+  }
+
+  const hasContent = text || contentDesc;
+  const isLeaf = children.length === 0;
+
+  // Flattening Rule:
+  // If this node is a generic container (no ID, no Text, no Desc) AND has exactly ONE child,
+  // we can skip this node and return the child directly.
+  if (!isLeaf && children.length === 1) {
+    const isGeneric = !resourceId && !hasContent;
+    const child = children[0];
+
+    if (isGeneric) {
+      if (
+        !clickable ||
+        (clickable &&
+          (child.clickable ||
+            child.type.includes("Button") ||
+            child.type.includes("Text")))
+      ) {
+        return child;
+      }
+    }
+  }
+
+  // Pruning Rule:
+  // If it's a leaf, it MUST have some content or be clickable or have a resourceId to be interesting.
+  if (isLeaf) {
+    if (!hasContent && !clickable && !resourceId) {
+      return null;
     }
   }
 
@@ -137,7 +242,9 @@ function pruneAndSimplify(node: any, depth: number = 0): SimplifiedNode | null {
     ...(contentDesc ? { contentDesc } : {}),
     ...(bounds ? { bounds } : {}),
     ...(clickable ? { clickable } : {}),
-    ...(enabled !== undefined ? { enabled } : {}),
+    ...(enabled ? { enabled } : {}),
+    ...(focused ? { focused } : {}),
+    ...(selected ? { selected } : {}),
   };
 
   if (children.length > 0) {
@@ -151,14 +258,41 @@ export async function getSemanticHierarchy(
   deviceId: string,
   platform: "android" | "ios"
 ): Promise<SimplifiedNode | null> {
-  let xml: string;
   if (platform === "android") {
-    xml = await getAndroidHierarchy(deviceId);
+    const xml = await getAndroidHierarchy(deviceId);
+    const result = await xml2js.parseStringPromise(xml);
+    // Android: root is 'hierarchy' -> 'node'
+    const rootNode = result.hierarchy?.node?.[0] || result.hierarchy || result;
+    return pruneAndSimplifyAndroidNode(rootNode);
   } else {
-    xml = await getIosHierarchy(deviceId);
-  }
+    // iOS: Maestro outputs JSON (sometimes with a prefix line like "None: ")
+    const rawOutput = await getIosHierarchy(deviceId);
 
-  const result = await xml2js.parseStringPromise(xml);
-  // Usually root is 'hierarchy' -> 'node' (Android)
-  return pruneAndSimplify(result.hierarchy || result);
+    // Strip any prefix before the JSON object starts
+    // Maestro may output "None: " or similar prefix before the JSON
+    const jsonStartIndex = rawOutput.indexOf("{");
+    if (jsonStartIndex === -1) {
+      throw new Error(
+        `No JSON found in Maestro hierarchy output: ${rawOutput.substring(
+          0,
+          200
+        )}`
+      );
+    }
+    const jsonString = rawOutput.substring(jsonStartIndex);
+
+    // Parse the JSON output from Maestro
+    let parsedJson: MaestroTreeNode;
+    try {
+      parsedJson = JSON.parse(jsonString);
+    } catch (parseError) {
+      throw new Error(
+        `Failed to parse iOS hierarchy JSON: ${
+          (parseError as Error).message
+        }. Raw: ${jsonString.substring(0, 200)}`
+      );
+    }
+
+    return pruneAndSimplifyMaestroNode(parsedJson);
+  }
 }
