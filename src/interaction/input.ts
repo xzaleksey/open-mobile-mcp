@@ -196,7 +196,7 @@ export async function deviceSwipe(
       `adb -s ${deviceId} shell input swipe ${x1} ${y1} ${x2} ${y2}`
     );
   } else {
-    // Maestro expects coordinates as quoted strings "x, y"
+    // iOS swipe via Maestro - coordinates as quoted strings "x, y"
     const flowYaml = `
 ---
 - swipe:

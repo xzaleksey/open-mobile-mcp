@@ -8,7 +8,12 @@ import {
 
 import { installDeps, runDoctor } from "./environment/doctor.js";
 import { manageAppLifecycle } from "./environment/lifecycle.js";
-import { getLogs, manageBundler, managePlatformLogs, streamErrors } from "./environment/metro.js";
+import {
+  getLogs,
+  manageBundler,
+  managePlatformLogs,
+  streamErrors,
+} from "./environment/metro.js";
 import { deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
 import { openDeepLink } from "./interaction/navigation.js";
@@ -17,6 +22,7 @@ import {
   findElement,
   getElementImage,
   waitForElement,
+  tapOnElement,
 } from "./perception/element.js";
 import { getSemanticHierarchy } from "./perception/hierarchy.js";
 import { configureOcr, getScreenText } from "./perception/ocr.js";
@@ -46,7 +52,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "get_viewport",
         description:
-          "Capture screenshot of a device, resized to ~1024px width.",
+          "Capture screenshot of a device. Returns the image (resized to ~800px width for efficiency) and metadata with both resized and original dimensions. Use originalWidth/originalHeight for coordinate calculations when tapping.",
         inputSchema: {
           type: "object",
           properties: {
@@ -81,15 +87,45 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: "device_tap",
-        description: "Tap at coordinates (Android) or via flow (iOS).",
+        name: "tap_on_element",
+        description:
+          "🥇 RECOMMENDED: Tap on a UI element by selector. This is the most reliable way to tap - it finds the element and taps its center automatically. Use this instead of device_tap with raw coordinates whenever possible.",
         inputSchema: {
           type: "object",
           properties: {
             deviceId: { type: "string" },
             platform: { type: "string", enum: ["android", "ios"] },
-            x: { type: "number" },
-            y: { type: "number" },
+            selector: {
+              type: "string",
+              description: "Text, testId, or content description to find",
+            },
+            strategy: {
+              type: "string",
+              enum: ["testId", "text", "contentDescription"],
+              description:
+                "How to find the element: 'text' (visible text), 'testId' (accessibility ID), or 'contentDescription'",
+            },
+          },
+          required: ["deviceId", "platform", "selector", "strategy"],
+        },
+      },
+      {
+        name: "device_tap",
+        description:
+          "⚠️ Low-level: Tap at raw screen coordinates. Prefer tap_on_element for reliability. Only use this when you have exact coordinates from find_element bounds or need pixel-precise tapping. Coordinates must be in original screen pixels (not the resized screenshot dimensions).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            x: {
+              type: "number",
+              description: "X coordinate in original screen pixels",
+            },
+            y: {
+              type: "number",
+              description: "Y coordinate in original screen pixels",
+            },
           },
           required: ["deviceId", "platform", "x", "y"],
         },
@@ -109,16 +145,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "device_swipe",
-        description: "Swipe on the device.",
+        description:
+          "⚠️ Low-level: Swipe from (x1,y1) to (x2,y2). Use this for custom gestures or when you need precise swipe control.",
         inputSchema: {
           type: "object",
           properties: {
             deviceId: { type: "string" },
             platform: { type: "string", enum: ["android", "ios"] },
-            x1: { type: "number" },
-            y1: { type: "number" },
-            x2: { type: "number" },
-            y2: { type: "number" },
+            x1: {
+              type: "number",
+              description: "Start X coordinate in original screen pixels",
+            },
+            y1: {
+              type: "number",
+              description: "Start Y coordinate in original screen pixels",
+            },
+            x2: {
+              type: "number",
+              description: "End X coordinate in original screen pixels",
+            },
+            y2: {
+              type: "number",
+              description: "End Y coordinate in original screen pixels",
+            },
           },
           required: ["deviceId", "platform", "x1", "y1", "x2", "y2"],
         },
@@ -137,7 +186,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "manage_bundler",
-        description: "Start, stop, or restart the Metro bundler. Platform logs (Android/iOS) auto-start by default.",
+        description:
+          "Start, stop, or restart the Metro bundler. Platform logs (Android/iOS) auto-start by default.",
         inputSchema: {
           type: "object",
           properties: {
@@ -172,14 +222,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             source: {
               type: "string",
               enum: ["metro", "android", "ios", "all"],
-              description: "Log source: 'metro', 'android', 'ios', or 'all' (default 'all')",
+              description:
+                "Log source: 'metro', 'android', 'ios', or 'all' (default 'all')",
             },
           },
         },
       },
       {
         name: "stream_errors",
-        description: "Get recent error logs from Metro, Android, and iOS (all sources).",
+        description:
+          "Get recent error logs from Metro, Android, and iOS (all sources).",
         inputSchema: {
           type: "object",
           properties: {
@@ -189,7 +241,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "manage_platform_logs",
-        description: "Manually start/stop platform log capture (optional - auto-starts with bundler).",
+        description:
+          "Manually start/stop platform log capture (optional - auto-starts with bundler).",
         inputSchema: {
           type: "object",
           properties: {
@@ -301,7 +354,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "find_element",
         description:
-          "Find UI elements using a selector (testId, text, description).",
+          "Find UI elements by selector. Returns elements with pre-parsed coordinates (centerX, centerY, left, top, right, bottom, width, height) ready for use. For tapping, prefer tap_on_element which does find+tap in one step.",
         inputSchema: {
           type: "object",
           properties: {
@@ -373,7 +426,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === "get_viewport") {
       const res = await getViewport(safeArgs.deviceId, safeArgs.platform);
-      return { content: [{ type: "text", text: JSON.stringify(res) }] };
+      return {
+        content: [
+          {
+            type: "image",
+            data: res.imageBase64,
+            mimeType: "image/jpeg",
+          },
+          {
+            type: "text",
+            text: JSON.stringify({
+              width: res.width,
+              height: res.height,
+              originalWidth: res.originalWidth,
+              originalHeight: res.originalHeight,
+            }),
+          },
+        ],
+      };
     }
     if (name === "get_semantic_hierarchy") {
       const res = await getSemanticHierarchy(
@@ -483,6 +553,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     if (name === "find_element") {
       const output = await findElement(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.selector,
+        safeArgs.strategy
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+      };
+    }
+    if (name === "tap_on_element") {
+      const output = await tapOnElement(
         safeArgs.deviceId,
         safeArgs.platform,
         safeArgs.selector,
