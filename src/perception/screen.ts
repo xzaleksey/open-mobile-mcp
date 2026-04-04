@@ -46,6 +46,8 @@ export async function getViewport(
   height: number;
   originalWidth: number;
   originalHeight: number;
+  logicalWidth?: number;
+  logicalHeight?: number;
 }> {
   let rawBuffer = await getRawScreenshotBuffer(deviceId, platform);
 
@@ -63,13 +65,32 @@ export async function getViewport(
   const resizedBuffer = await image.getBufferAsync(Jimp.MIME_JPEG);
   const base64 = resizedBuffer.toString("base64");
 
-  return {
+  const result: any = {
     imageBase64: base64,
     width: image.bitmap.width,
     height: image.bitmap.height,
     originalWidth,
     originalHeight,
   };
+
+  if (platform === "android") {
+    try {
+      const { stdout } = await execAsync(`adb -s ${deviceId} shell wm size`);
+      const overrideMatch = stdout.match(/Override size: (\d+)x(\d+)/);
+      const physicalMatch = stdout.match(/Physical size: (\d+)x(\d+)/);
+      if (overrideMatch) {
+        result.logicalWidth = parseInt(overrideMatch[1]);
+        result.logicalHeight = parseInt(overrideMatch[2]);
+      } else if (physicalMatch) {
+        result.logicalWidth = parseInt(physicalMatch[1]);
+        result.logicalHeight = parseInt(physicalMatch[2]);
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  return result;
 }
 
 export async function captureDiff(

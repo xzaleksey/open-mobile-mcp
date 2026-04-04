@@ -178,21 +178,62 @@ export async function getElementImage(
   let x2 = parseInt(boundsMatch[3]);
   let y2 = parseInt(boundsMatch[4]);
 
-  const w = x2 - x1;
-  const h = y2 - y1;
-
   // 3. Get Screenshot (Raw)
   const rawBuffer = await getRawScreenshotBuffer(deviceId, platform);
   const image = await Jimp.read(rawBuffer);
 
-  // 4. Crop
-  // Ensure we don't go out of bounds (just in case)
-  x1 = Math.max(0, x1);
-  y1 = Math.max(0, y1);
-  const cropW = Math.min(w, image.bitmap.width - x1);
-  const cropH = Math.min(h, image.bitmap.height - y1);
+  // 4. Handle coordinate scaling for Android
+  // Hierarchy coordinates might be in "logical" pixels (if wm size override is set)
+  // but screencap always returns physical pixels.
+  let scaleX = 1;
+  let scaleY = 1;
 
-  image.crop(x1, y1, cropW, cropH);
+  if (platform === "android") {
+    try {
+      const { exec } = await import("child_process");
+      const { promisify } = await import("util");
+      const execAsync = promisify(exec);
+      const { stdout } = await execAsync(`adb -s ${deviceId} shell wm size`);
+      const overrideMatch = stdout.match(/Override size: (\d+)x(\d+)/);
+      const physicalMatch = stdout.match(/Physical size: (\d+)x(\d+)/);
+
+      let logicalWidth = 0;
+      let logicalHeight = 0;
+
+      if (overrideMatch) {
+        logicalWidth = parseInt(overrideMatch[1]);
+        logicalHeight = parseInt(overrideMatch[2]);
+      } else if (physicalMatch) {
+        logicalWidth = parseInt(physicalMatch[1]);
+        logicalHeight = parseInt(physicalMatch[2]);
+      }
+
+      if (logicalWidth > 0 && logicalHeight > 0) {
+        scaleX = image.bitmap.width / logicalWidth;
+        scaleY = image.bitmap.height / logicalHeight;
+      }
+    } catch (e) {
+      // Fallback to 1:1
+    }
+  }
+
+  // Apply scaling to bounds
+  x1 = Math.round(x1 * scaleX);
+  y1 = Math.round(y1 * scaleY);
+  x2 = Math.round(x2 * scaleX);
+  y2 = Math.round(y2 * scaleY);
+
+  const w = Math.max(1, x2 - x1);
+  const h = Math.max(1, y2 - y1);
+
+  // 5. Crop
+  // Ensure we don't go out of bounds
+  const cropX = Math.max(0, x1);
+  const cropY = Math.max(0, y1);
+  const cropW = Math.min(w, image.bitmap.width - cropX);
+  const cropH = Math.min(h, image.bitmap.height - cropY);
+
+  image.crop(cropX, cropY, cropW, cropH);
 
   const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
   return buffer.toString("base64");
@@ -228,7 +269,8 @@ export async function tapOnElement(
   }
 
   // Tap on the center of the element
-  await deviceTap(deviceId, platform, element.centerX, element.centerY);
+  // Since element.centerX/Y come from hierarchy, they are in logical coordinates.
+  await deviceTap(deviceId, platform, element.centerX, element.centerY, true);
 
   return {
     success: true,
@@ -269,10 +311,9 @@ export async function scrollToElement(
   const viewport = await getViewport(deviceId, platform);
 
   // iOS uses points (typically 1/3 of pixels for 3x Retina)
-  // Android uses actual pixels
-  const scaleFactor = platform === "ios" ? 3 : 1;
-  const screenWidth = Math.round(viewport.originalWidth / scaleFactor);
-  const screenHeight = Math.round(viewport.originalHeight / scaleFactor);
+  // Android uses logical pixels (which may differ from physical screenshot pixels)
+  const screenWidth = viewport.logicalWidth || (platform === "ios" ? Math.round(viewport.originalWidth / 3) : viewport.originalWidth);
+  const screenHeight = viewport.logicalHeight || (platform === "ios" ? Math.round(viewport.originalHeight / 3) : viewport.originalHeight);
 
   const centerX = Math.round(screenWidth / 2);
   const centerY = Math.round(screenHeight / 2);
@@ -318,13 +359,15 @@ export async function scrollToElement(
 
   for (let i = 0; i < maxScrolls; i++) {
     // Perform swipe
+    // These coordinates are calculated from logical screen dimensions, so they are logical.
     await deviceSwipe(
       deviceId,
       platform,
       swipeCoords.x1,
       swipeCoords.y1,
       swipeCoords.x2,
-      swipeCoords.y2
+      swipeCoords.y2,
+      true
     );
 
     // Wait for scroll animation and Maestro to fully complete

@@ -22,10 +22,35 @@ export async function deviceTap(
   deviceId: string,
   platform: "android" | "ios",
   x: number,
-  y: number
+  y: number,
+  isLogical: boolean = false
 ): Promise<void> {
   if (platform === "android") {
-    await execAsync(`adb -s ${deviceId} shell input tap ${x} ${y}`);
+    // Android: scale coordinates if we have physical pixels but shell expects logical
+    let targetX = x;
+    let targetY = y;
+
+    if (!isLogical) {
+      try {
+        const { stdout } = await execAsync(`adb -s ${deviceId} shell wm size`);
+        const overrideMatch = stdout.match(/Override size: (\d+)x(\d+)/);
+        const physicalMatch = stdout.match(/Physical size: (\d+)x(\d+)/);
+
+        if (overrideMatch && physicalMatch) {
+          const physW = parseInt(physicalMatch[1]);
+          const physH = parseInt(physicalMatch[2]);
+          const logW = parseInt(overrideMatch[1]);
+          const logH = parseInt(overrideMatch[2]);
+
+          targetX = Math.round(x * (logW / physW));
+          targetY = Math.round(y * (logH / physH));
+        }
+      } catch (e) {
+        // Ignore and use raw
+      }
+    }
+
+    await execAsync(`adb -s ${deviceId} shell input tap ${targetX} ${targetY}`);
   } else {
     // iOS tap via Maestro flow
     // Note: Maestro expects point as a quoted string "x, y"
@@ -189,11 +214,42 @@ export async function deviceSwipe(
   x1: number,
   y1: number,
   x2: number,
-  y2: number
+  y2: number,
+  isLogical: boolean = false
 ): Promise<void> {
   if (platform === "android") {
+    let tx1 = x1,
+      ty1 = y1,
+      tx2 = x2,
+      ty2 = y2;
+
+    if (!isLogical) {
+      try {
+        const { stdout } = await execAsync(`adb -s ${deviceId} shell wm size`);
+        const overrideMatch = stdout.match(/Override size: (\d+)x(\d+)/);
+        const physicalMatch = stdout.match(/Physical size: (\d+)x(\d+)/);
+
+        if (overrideMatch && physicalMatch) {
+          const physW = parseInt(physicalMatch[1]);
+          const physH = parseInt(physicalMatch[2]);
+          const logW = parseInt(overrideMatch[1]);
+          const logH = parseInt(overrideMatch[2]);
+
+          const sx = logW / physW;
+          const sy = logH / physH;
+
+          tx1 = Math.round(x1 * sx);
+          ty1 = Math.round(y1 * sy);
+          tx2 = Math.round(x2 * sx);
+          ty2 = Math.round(y2 * sy);
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+
     await execAsync(
-      `adb -s ${deviceId} shell input swipe ${x1} ${y1} ${x2} ${y2}`
+      `adb -s ${deviceId} shell input swipe ${tx1} ${ty1} ${tx2} ${ty2}`
     );
   } else {
     // iOS swipe via Maestro - coordinates as quoted strings "x, y"

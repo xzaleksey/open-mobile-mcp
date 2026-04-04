@@ -8,6 +8,13 @@ export interface Device {
   name: string;
   type: "android" | "ios";
   state: "booted" | "shutdown" | "unknown";
+  screen?: {
+    width: number;
+    height: number;
+    density?: number;
+    logicalWidth?: number;
+    logicalHeight?: number;
+  };
 }
 
 interface SimctlDevicesJson {
@@ -46,12 +53,56 @@ export async function listDevices(): Promise<Device[]> {
           const deviceName = modelMatch
             ? modelMatch[1].replace(/_/g, " ")
             : `Android (${id})`;
-          devices.push({
+
+          const device: Device = {
             id,
             name: deviceName,
             type: "android",
             state: "booted",
-          });
+          };
+
+          // Fetch screen info
+          try {
+            const { stdout: sizeOut } = await execAsync(
+              `adb -s ${id} shell wm size`
+            );
+            // wm size output:
+            // Physical size: 1200x1920
+            // Override size: 800x1280 (optional)
+            const physicalSizeMatch = sizeOut.match(/Physical size: (\d+)x(\d+)/);
+            if (physicalSizeMatch) {
+              device.screen = {
+                width: parseInt(physicalSizeMatch[1]),
+                height: parseInt(physicalSizeMatch[2]),
+              };
+
+              const overrideSizeMatch = sizeOut.match(/Override size: (\d+)x(\d+)/);
+              if (overrideSizeMatch) {
+                device.screen.logicalWidth = parseInt(overrideSizeMatch[1]);
+                device.screen.logicalHeight = parseInt(overrideSizeMatch[2]);
+              } else {
+                device.screen.logicalWidth = device.screen.width;
+                device.screen.logicalHeight = device.screen.height;
+              }
+            }
+
+            const { stdout: densityOut } = await execAsync(
+              `adb -s ${id} shell wm density`
+            );
+            // wm density output:
+            // Physical density: 320
+            // Override density: 240 (optional)
+            const densityMatch =
+              densityOut.match(/Override density: (\d+)/) ||
+              densityOut.match(/Physical density: (\d+)/);
+            if (densityMatch && device.screen) {
+              device.screen.density = parseInt(densityMatch[1]);
+            }
+          } catch (e) {
+            // Ignore if wm command fails
+          }
+
+          devices.push(device);
         }
       }
     }

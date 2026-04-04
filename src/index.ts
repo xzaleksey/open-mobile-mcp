@@ -52,7 +52,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "get_viewport",
         description:
-          "Capture screenshot of a device. Returns the image (resized to ~800px width for efficiency) and metadata with both resized and original dimensions. Use originalWidth/originalHeight for coordinate calculations when tapping.",
+          "Capture screenshot of a device. Returns the image (resized to ~800px width for efficiency) and metadata with both resized and original dimensions. Use originalWidth/originalHeight for coordinate calculations when tapping. For Android, if logicalWidth/Height are provided, they represent the UI coordinate system which may differ from the physical screenshot pixels.",
         inputSchema: {
           type: "object",
           properties: {
@@ -112,7 +112,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "device_tap",
         description:
-          "⚠️ Low-level: Tap at raw screen coordinates. Prefer tap_on_element for reliability. Only use this when you have exact coordinates from find_element bounds or need pixel-precise tapping. Coordinates must be in original screen pixels (not the resized screenshot dimensions).",
+          "⚠️ Low-level: Tap at raw screen coordinates. Prefer tap_on_element for reliability. Use coordinates from the physical screenshot (originalWidth/originalHeight). On Android, this tool automatically scales coordinates if a display override (logical resolution) is detected.",
         inputSchema: {
           type: "object",
           properties: {
@@ -146,7 +146,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "device_swipe",
         description:
-          "⚠️ Low-level: Swipe from (x1,y1) to (x2,y2). Use this for custom gestures or when you need precise swipe control.",
+          "⚠️ Low-level: Swipe from (x1,y1) to (x2,y2). Use this for custom gestures or when you need precise swipe control. Use coordinates from the physical screenshot (originalWidth/originalHeight). On Android, this tool automatically scales coordinates if a display override (logical resolution) is detected.",
         inputSchema: {
           type: "object",
           properties: {
@@ -440,6 +440,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               height: res.height,
               originalWidth: res.originalWidth,
               originalHeight: res.originalHeight,
+              logicalWidth: res.logicalWidth,
+              logicalHeight: res.logicalHeight,
             }),
           },
         ],
