@@ -33,6 +33,18 @@ temp/
 *.tmp
 *.temp
 
+# Local MCP config (machine-specific paths)
+.mcp.json
+
+# Pinch driver build artifacts (prebuilt APK in assets/android/ IS committed)
+pinch-driver/classes/
+pinch-driver/dex/
+pinch-driver/*-unsigned.apk
+
+# Test/scratch files
+record_final.mp4
+test_pinch.yaml
+
 # Tesseract
 *.traineddata
 eng.traineddata.gz

@@ -133,7 +133,7 @@ export async function waitForElement(
   platform: "android" | "ios",
   selector: string,
   strategy: "testId" | "text" | "contentDescription",
-  timeoutMs: number = 10000
+  timeoutMs: number = 20000
 ): Promise<string> {
   const startTime = Date.now();
 
@@ -246,7 +246,8 @@ export async function tapOnElement(
   deviceId: string,
   platform: "android" | "ios",
   selector: string,
-  strategy: "testId" | "text" | "contentDescription"
+  strategy: "testId" | "text" | "contentDescription",
+  duration: number = 0
 ): Promise<{
   success: boolean;
   element: ElementWithCoordinates;
@@ -270,7 +271,14 @@ export async function tapOnElement(
 
   // Tap on the center of the element
   // Since element.centerX/Y come from hierarchy, they are in logical coordinates.
-  await deviceTap(deviceId, platform, element.centerX, element.centerY, true);
+  await deviceTap(
+    deviceId,
+    platform,
+    element.centerX,
+    element.centerY,
+    true,
+    duration
+  );
 
   return {
     success: true,

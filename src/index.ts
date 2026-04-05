@@ -14,8 +14,9 @@ import {
   manageBundler,
   managePlatformLogs,
   streamErrors,
+  waitForLog,
 } from "./environment/metro.js";
-import { devicePinch, deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
+import { clearAppData, devicePinch, devicePressKey, deviceRotateGesture, deviceSwipe, deviceTap, deviceType, getAppInfo } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
 import { setSystemLocale } from "./interaction/navigation.js";
 import { openDeepLink } from "./interaction/navigation.js";
@@ -96,7 +97,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "tap_on_element",
         description:
-          "🥇 RECOMMENDED: Tap on a UI element by selector. This is the most reliable way to tap - it finds the element and taps its center automatically. Use this instead of device_tap with raw coordinates whenever possible.",
+          "🥇 RECOMMENDED: Tap on a UI element by selector. Finds the element and taps its center automatically. Prefer over device_tap. If observing a log triggered by this tap, spawn the wait_for_log subagent BEFORE tapping. NOTE: text matching is exact — if an element renders with an emoji prefix (e.g. '🇫🇷 French A2'), passing 'French A2' will fail. Use get_semantic_hierarchy first to see the exact text, or use contentDescription/testId strategy instead.",
         inputSchema: {
           type: "object",
           properties: {
@@ -111,6 +112,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               enum: ["testId", "text", "contentDescription"],
               description:
                 "How to find the element: 'text' (visible text), 'testId' (accessibility ID), or 'contentDescription'",
+            },
+            duration: {
+              type: "number",
+              description: "Optional duration in ms. If > 0, performs a long press.",
             },
           },
           required: ["deviceId", "platform", "selector", "strategy"],
@@ -202,7 +207,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "device_pinch",
         description:
-          "Perform a pinch gesture (two-finger zoom) on the device. Use 'out' to zoom in (fingers spread apart) and 'in' to zoom out (fingers come together). Works well for maps and other zoomable content. On Android, uses two simultaneous input swipes.",
+          "Perform a pinch gesture (two-finger zoom) on the device. Use 'out' to zoom in (fingers spread apart) and 'in' to zoom out (fingers come together). Works on real Android phones (no root needed) via UIAutomation MotionEvent injection.",
         inputSchema: {
           type: "object",
           properties: {
@@ -231,6 +236,73 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ["deviceId", "platform", "centerX", "centerY", "direction"],
+        },
+      },
+      {
+        name: "device_press_key",
+        description:
+          "Press a hardware or system key. Also accepts raw Android keycodes as numbers.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            key: {
+              type: "string",
+              enum: [
+                "back", "home", "recents", "enter", "delete", "backspace",
+                "volume_up", "volume_down", "volume_mute", "power",
+                "escape", "tab", "search", "space", "camera", "call", "endcall",
+                "menu", "notification", "dpad_up", "dpad_down", "dpad_left", "dpad_right", "dpad_center"
+              ],
+              description: "Key name or raw Android keycode number",
+            },
+          },
+          required: ["deviceId", "platform", "key"],
+        },
+      },
+      {
+        name: "device_rotate_gesture",
+        description:
+          "Perform a two-finger rotation gesture (e.g. to rotate a map or image). Positive degrees = clockwise. Android only (uses UIAutomation, no root needed).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            centerX: { type: "number", description: "X center of rotation in screen pixels" },
+            centerY: { type: "number", description: "Y center of rotation in screen pixels" },
+            degrees: { type: "number", description: "Degrees to rotate. Positive = clockwise." },
+            radius: { type: "number", description: "Distance of each finger from center in pixels (default 120)" },
+            duration: { type: "number", description: "Gesture duration in ms (default 500)" },
+          },
+          required: ["deviceId", "platform", "centerX", "centerY", "degrees"],
+        },
+      },
+      {
+        name: "clear_app_data",
+        description: "Clear all data and cache for an app (equivalent to Settings → App → Clear Data). Resets the app to a fresh-install state. Useful for testing onboarding or reproducing first-launch bugs.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            packageId: { type: "string", description: "Android package ID or iOS bundle ID (e.g. 'com.example.app')" },
+          },
+          required: ["deviceId", "platform", "packageId"],
+        },
+      },
+      {
+        name: "get_app_info",
+        description: "Get version, install date, SDK target, data directory, and granted/denied permissions for an installed app. Android only.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            packageId: { type: "string", description: "Android package ID (e.g. 'com.google.android.apps.maps')" },
+          },
+          required: ["deviceId", "platform", "packageId"],
         },
       },
       {
@@ -286,7 +358,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "manage_bundler",
         description:
-          "Start, stop, or restart the Metro bundler. Platform logs (Android/iOS) auto-start by default.",
+          "Start, stop, or restart the Metro bundler. Platform logs (Android/iOS) auto-start by default. On Android, pass both deviceId and packageId to enable PID-based log filtering — this captures only your app's logs and eliminates all system/GMS noise.",
         inputSchema: {
           type: "object",
           properties: {
@@ -298,11 +370,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             command: {
               type: "string",
               description:
-                "Optional custom command (e.g. 'npm run android'). Default: 'npx expo start'",
+                "Optional custom command. Default: 'npx expo start'. To target a specific device use 'npx expo run:android --device <deviceId>' or 'npx expo run:ios --device <deviceId>'.",
             },
             autoStartPlatformLogs: {
               type: "boolean",
               description: "Auto-start platform log capture (default true)",
+            },
+            showTerminal: {
+              type: "boolean",
+              description: "Open the bundler in a new terminal window (default true)",
+            },
+            deviceId: {
+              type: "string",
+              description: "Device/emulator ID (from device_list). Pass with packageId to enable PID-based Android log filtering that eliminates system noise.",
+            },
+            packageId: {
+              type: "string",
+              description: "Package ID of the app (e.g. 'com.example.app'). Pass with deviceId on Android for precise per-app log filtering.",
+            },
+            logFilter: {
+              type: "string",
+              description: "Optional raw log filter (adb logcat tags on Android, predicate on iOS)",
             },
           },
           required: ["action"],
@@ -310,20 +398,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "get_network_logs",
-        description: "Pull filtered network logs from the device using adb logcat.",
+        description: "Pull network-related logs from the device using adb logcat. For Expo / React Native apps, all console.log output (including fetchApi network traces) is emitted under the 'ReactNativeJS' logcat tag — use filter 'ReactNativeJS' or leave default. For native Android HTTP clients use 'OkHttp'. Note: a recurring warning 'ReconnectingWebSocket: Couldn't connect to ws://<host>:8081/inspector/network' is harmless — it means Metro bundler's DevTools WebSocket is not reachable from the device (Metro not running or port 8081 blocked). The app still works; start Metro via 'npx expo start' or 'npx react-native start' on the same network to silence it.",
         inputSchema: {
           type: "object",
           properties: {
             deviceId: { type: "string" },
-            filter: { type: "string", description: "Tag or regex to filter by (default: OkHttp|Volley|CRONET)" },
-            tailLength: { type: "number", description: "Number of lines to pull (default 1000)" },
+            filter: { type: "string", description: "Regex matched against logcat lines (case-insensitive). Expo/RN: 'ReactNativeJS' (all console.log including fetchApi traces). Native Android: 'OkHttp', 'Volley', 'CRONET'. Default: 'ReactNativeJS|OkHttp|Volley|CRONET'" },
+            tailLength: { type: "number", description: "Number of raw logcat lines to scan before filtering (default 1000). Increase if recent logs have rolled out of the buffer." },
           },
           required: ["deviceId"],
         },
       },
       {
         name: "get_bundler_logs",
-        description: "Get recent logs from Metro bundler, Android, or iOS.",
+        description: "Get recent logs from Metro bundler, Android, or iOS. To wait for a specific line, use wait_for_log in a background subagent instead of polling.",
         inputSchema: {
           type: "object",
           properties: {
@@ -341,9 +429,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "wait_for_log",
+        description:
+          "Block until a log line matching a pattern appears, or timeout. Returns {matched, line, elapsed}.\n\nALWAYS use via background subagent — never call directly or it blocks the whole conversation:\n  1. Spawn background subagent: 'Call wait_for_log(pattern, timeout). Report result.'\n  2. Then perform the action (tap/navigate) in the main agent\n  3. Main agent continues; subagent notifies when pattern matched\n\nSpawn subagent BEFORE the action that triggers the log, not after.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            pattern: {
+              type: "string",
+              description: "Regex pattern to match against log lines (case-insensitive)",
+            },
+            timeout: {
+              type: "number",
+              description: "Max wait time in ms (default 60000). Use at least 60000 to account for subagent startup overhead.",
+            },
+            source: {
+              type: "string",
+              enum: ["metro", "android", "ios", "all"],
+              description: "Which log buffer to watch (default 'all')",
+            },
+          },
+          required: ["pattern"],
+        },
+      },
+      {
         name: "stream_errors",
         description:
-          "Get recent error logs from Metro, Android, and iOS (all sources).",
+          "Get recent error logs from Metro, Android, and iOS. To wait for a specific error, use wait_for_log(pattern: 'error|exception') in a background subagent instead of polling.",
         inputSchema: {
           type: "object",
           properties: {
@@ -354,7 +466,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "manage_platform_logs",
         description:
-          "Manually start/stop platform log capture (optional - auto-starts with bundler).",
+          "Manually start/stop platform log capture (optional - auto-starts with bundler). On Android, pass both deviceId and packageId to enable PID-based filtering — this captures only your app's logs and eliminates all system/GMS noise. Without packageId, falls back to ReactNative/AndroidRuntime tag filtering which may include unrelated system warnings.",
         inputSchema: {
           type: "object",
           properties: {
@@ -368,9 +480,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               enum: ["start", "stop"],
               description: "Start or stop log capture",
             },
+            deviceId: {
+              type: "string",
+              description: "Device/emulator ID (from device_list). Required for per-app PID filtering on Android.",
+            },
             projectPath: {
               type: "string",
               description: "Optional path to project root",
+            },
+            showTerminal: {
+              type: "boolean",
+              description: "Open the logs in a new terminal window (default true)",
+            },
+            packageId: {
+              type: "string",
+              description: "Package ID to filter logs (e.g. 'com.example.app'). On Android, used with deviceId for precise PID-based filtering that eliminates system noise.",
+            },
+            logFilter: {
+              type: "string",
+              description: "Optional raw log filter (adb logcat tags on Android, predicate on iOS)",
             },
           },
           required: ["platform", "action"],
@@ -496,7 +624,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             timeout: {
               type: "number",
-              description: "Timeout in ms (default 10000)",
+              description: "Timeout in ms (default 20000)",
             },
           },
           required: ["deviceId", "platform", "selector", "strategy"],
@@ -538,6 +666,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === "get_viewport") {
       const res = await getViewport(safeArgs.deviceId, safeArgs.platform);
+      const scaleX = res.originalWidth / res.width;
+      const scaleY = res.originalHeight / res.height;
       return {
         content: [
           {
@@ -547,14 +677,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
           {
             type: "text",
-            text: JSON.stringify({
-              width: res.width,
-              height: res.height,
-              originalWidth: res.originalWidth,
-              originalHeight: res.originalHeight,
-              logicalWidth: res.logicalWidth,
-              logicalHeight: res.logicalHeight,
-            }),
+            text: [
+              `⚠️ TAP COORDINATES: use originalWidth x originalHeight (${res.originalWidth}x${res.originalHeight}), NOT the image size (${res.width}x${res.height}).`,
+              `Image is scaled down by ${scaleX.toFixed(3)}x/${scaleY.toFixed(3)}y. Multiply any image pixel coordinate by this factor before tapping.`,
+              `tap_coords: { x: imageX * ${scaleX.toFixed(3)}, y: imageY * ${scaleY.toFixed(3)} }`,
+              "",
+              JSON.stringify({
+                imageWidth: res.width,
+                imageHeight: res.height,
+                originalWidth: res.originalWidth,
+                originalHeight: res.originalHeight,
+                scaleX,
+                scaleY,
+                ...(res.logicalWidth ? { logicalWidth: res.logicalWidth, logicalHeight: res.logicalHeight } : {}),
+              }),
+            ].join("\n"),
           },
         ],
       };
@@ -616,6 +753,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       );
       return { content: [{ type: "text", text: "Pinch executed" }] };
     }
+    if (name === "device_press_key") {
+      await devicePressKey(safeArgs.deviceId, safeArgs.platform, safeArgs.key);
+      return { content: [{ type: "text", text: `Key '${safeArgs.key}' pressed` }] };
+    }
+    if (name === "device_rotate_gesture") {
+      await deviceRotateGesture(
+        safeArgs.deviceId, safeArgs.platform,
+        safeArgs.centerX, safeArgs.centerY, safeArgs.degrees,
+        safeArgs.radius ?? 120, safeArgs.duration ?? 500
+      );
+      return { content: [{ type: "text", text: "Rotate gesture executed" }] };
+    }
+    if (name === "clear_app_data") {
+      const output = await clearAppData(safeArgs.deviceId, safeArgs.platform, safeArgs.packageId);
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "get_app_info") {
+      const info = await getAppInfo(safeArgs.deviceId, safeArgs.platform, safeArgs.packageId);
+      return { content: [{ type: "text", text: JSON.stringify(info, null, 2) }] };
+    }
     if (name === "run_maestro_flow") {
       const output = await runMaestroFlow(safeArgs.deviceId, safeArgs.flowYaml);
       return { content: [{ type: "text", text: output }] };
@@ -625,7 +782,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         safeArgs.action,
         safeArgs.projectPath,
         safeArgs.command,
-        safeArgs.autoStartPlatformLogs
+        safeArgs.autoStartPlatformLogs,
+        safeArgs.showTerminal,
+        safeArgs.packageId,
+        safeArgs.logFilter,
+        safeArgs.deviceId
       );
       return { content: [{ type: "text", text: output }] };
     }
@@ -644,6 +805,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       );
       return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
     }
+    if (name === "wait_for_log") {
+      const result = await waitForLog(
+        safeArgs.pattern,
+        safeArgs.timeout,
+        safeArgs.source
+      );
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
     if (name === "stream_errors") {
       const output = streamErrors(safeArgs.tailLength);
       return { content: [{ type: "text", text: output }] };
@@ -660,7 +829,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const output = await managePlatformLogs(
         safeArgs.platform,
         safeArgs.action,
-        safeArgs.projectPath
+        safeArgs.projectPath,
+        safeArgs.showTerminal,
+        safeArgs.packageId,
+        safeArgs.logFilter,
+        safeArgs.deviceId
       );
       return { content: [{ type: "text", text: output }] };
     }
@@ -709,15 +882,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
     if (name === "tap_on_element") {
-      const output = await tapOnElement(
+      const result = await tapOnElement(
         safeArgs.deviceId,
         safeArgs.platform,
         safeArgs.selector,
-        safeArgs.strategy
+        safeArgs.strategy,
+        safeArgs.duration || 0
       );
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-      };
+      return { content: [{ type: "text", text: result.message }] };
     }
     if (name === "wait_for_element") {
       const output = await waitForElement(
