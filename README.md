@@ -2,7 +2,7 @@
 
 An open-source **Model Context Protocol (MCP)** server for mobile automation. It provides LLMs (like Claude, Gemini) with the ability to view, control, and test Android and iOS devices.
 
-> **Key Feature**: Robust Unicode support (Cyrillic, CJK, Emoji) via auto-switching to `ADB Keyboard` or falling back to `Maestro`.
+> Give any LLM eyes and hands on a real mobile device — screenshot, tap, swipe, read logs, and verify your app without writing test code.
 
 ## Features
 
