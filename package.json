@@ -1,13 +1,35 @@
 {
   "name": "open-mobile-mcp",
   "version": "1.0.0",
-  "description": "Local-first MCP server for React Native and Expo verification",
+  "description": "MCP server for Android and iOS mobile automation — control devices, read logs, and test React Native / Expo apps with LLMs.",
   "type": "module",
   "main": "build/index.js",
+  "bin": {
+    "open-mobile-mcp": "build/index.js"
+  },
+  "files": [
+    "build/",
+    "assets/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xzaleksey/open-mobile-mcp.git"
+  },
+  "homepage": "https://github.com/xzaleksey/open-mobile-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/xzaleksey/open-mobile-mcp/issues"
+  },
+  "keywords": [
+    "mcp", "model-context-protocol", "mobile", "android", "ios",
+    "react-native", "expo", "automation", "adb", "testing", "claude"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node build/index.js",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
