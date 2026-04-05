@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.openmobilemcp.driver">
+
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
+
+    <instrumentation
+        android:name=".PinchInstrumentation"
+        android:targetPackage="com.openmobilemcp.driver"
+        android:label="OpenMobileMCP Gesture Driver" />
+
+    <application />
+</manifest>
