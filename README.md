@@ -1,22 +1,22 @@
 # Open Mobile MCP Server 📱
 
-An open-source **Model Context Protocol (MCP)** server for mobile automation. It provides LLMs (like Claude, Gemini) with the ability to view, control, and test Android and iOS devices.
+An open-source **Model Context Protocol (MCP)** server for mobile automation. Give any LLM eyes and hands on a real Android or iOS device — screenshot, tap, swipe, read logs, and verify your app without writing test code.
 
-> Give any LLM eyes and hands on a real mobile device — screenshot, tap, swipe, read logs, and verify your app without writing test code.
+Works with **Claude Code**, **Claude Desktop**, **Cursor**, and any other MCP-compatible client.
 
 ## Features
 
-- **Perception**: Optimized screenshots (`get_viewport`) and semantic hierarchy (`get_semantic_hierarchy`) with ~65% token reduction.
-- **Interaction**: Tap, swipe, type, pinch, rotate, long-press, and hardware key presses.
-- **Text Input**: International character support. Auto-detects and uses [ADB Keyboard](https://github.com/senzhk/ADBKeyBoard) for non-ASCII input, restores original keyboard automatically.
-- **Logging**: PID-based Android log filtering (pass `deviceId` + `packageId` to eliminate system noise). Background log watching via `wait_for_log`.
-- **Environment**: Manage Metro bundler, platform logs, app lifecycle, deep links, screen recording.
+- **Perception**: Screenshots, semantic UI hierarchy, OCR, element finder, layout health analysis.
+- **Interaction**: Tap, swipe, type, pinch, rotate, long-press, hardware key presses.
+- **Logging**: Per-app Android log filtering via PID (pass `deviceId` + `packageId` to eliminate system noise). Background log watching via `wait_for_log`.
+- **Environment**: Metro bundler management, app lifecycle, deep links, screen recording, locale switching.
+- **Text Input**: Unicode/Cyrillic/CJK/Emoji support via [ADB Keyboard](https://github.com/senzhk/ADBKeyBoard) with automatic keyboard restore.
 
 ## Prerequisites
 
 1. **Node.js** (v18+)
-2. **ADB** (Android Debug Bridge) installed and in PATH.
-3. **Maestro** (recommended for iOS and fallback Android input).
+2. **ADB** installed and in PATH (for Android).
+3. **Maestro** (required for iOS; fallback for Android input).
 
    - **Mac/Linux**: `curl -Ls "https://get.maestro.mobile.dev" | bash`
    - **Windows**:
@@ -24,13 +24,12 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
      powershell -Command "iwr -useb https://get.maestro.mobile.dev | iex"
      ```
 
-4. **(Recommended) ADB Keyboard**: Required only for non-ASCII characters (Unicode, Cyrillic, Emoji).
-   - Download from [GitHub](https://github.com/senzhk/ADBKeyBoard).
-   - Install: `adb install ADBKeyboard.apk`.
+4. **(Optional) ADB Keyboard** — only needed for non-ASCII input (Unicode, Cyrillic, Emoji).
+   - Download from [GitHub](https://github.com/senzhk/ADBKeyBoard) and install: `adb install ADBKeyboard.apk`.
 
 ## Configuration
 
-**macOS / Linux** — via npx (recommended)
+**macOS / Linux**
 ```json
 {
   "mcpServers": {
@@ -42,7 +41,7 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
 }
 ```
 
-**Windows** — via npx (recommended)
+**Windows**
 ```json
 {
   "mcpServers": {
@@ -58,7 +57,7 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
 }
 ```
 
-> **Note**: On Windows, explicitly setting `MAESTRO_HOME` and `PATH` is often required for `maestro` to be found. On macOS/Linux this is usually not needed if Maestro was installed via the official script.
+> **Note**: On Windows, explicitly setting `MAESTRO_HOME` and `PATH` is often required for `maestro` to be found.
 
 <details>
 <summary>Running from source</summary>
@@ -75,59 +74,62 @@ Then use `"command": "node", "args": ["/path/to/open-mobile-mcp/build/index.js"]
 ## Tools
 
 ### Perception
-| Tool | Description |
-|------|-------------|
-| `device_list` | List connected Android emulators and iOS simulators |
-| `get_viewport` | Screenshot (~800px wide). **Use `originalWidth`/`originalHeight` for tap coordinates** — the image is scaled down, tapping at image pixels will miss. |
-| `get_semantic_hierarchy` | Token-optimized UI tree |
-| `get_screen_text` | OCR via Tesseract.js (default `eng`) |
-| `configure_ocr` | Set default OCR language (e.g. `eng+fra`) |
-| `find_element` | Find elements by `testId`, `text`, or `contentDescription` |
-| `wait_for_element` | Poll until element appears (default 20s timeout) |
-| `get_element_image` | Cropped screenshot of a specific element |
-| `capture_diff` | Compare two base64 images, returns diff % |
-| `analyze_layout_health` | Detect deep nesting and layout performance issues |
+| Tool | Platform | Description |
+|------|----------|-------------|
+| `device_list` | Android/iOS | List connected emulators and simulators |
+| `get_viewport` | Android/iOS | Screenshot (~800px wide). **Use `originalWidth`/`originalHeight` for tap coordinates** — the image is scaled down, tapping at image pixels will miss. |
+| `get_semantic_hierarchy` | Android/iOS | Pruned UI tree as JSON |
+| `get_screen_text` | Android/iOS | OCR via Tesseract.js (default `eng`) |
+| `configure_ocr` | Android/iOS | Set default OCR language (e.g. `eng+fra`) |
+| `find_element` | Android/iOS | Find elements by `testId`, `text`, or `contentDescription` |
+| `wait_for_element` | Android/iOS | Poll until element appears (default 20s) |
+| `get_element_image` | Android/iOS | Cropped screenshot of a specific element |
+| `capture_diff` | — | Compare two base64 screenshots, returns diff % |
+| `analyze_layout_health` | Android/iOS | Detect deep nesting and layout performance issues |
 
 ### Interaction
-| Tool | Description |
-|------|-------------|
-| `tap_on_element` | **Recommended** — find + tap by selector. Note: text matching is exact; emoji prefixes (e.g. `🇫🇷 French A2`) will break text matching — use `get_semantic_hierarchy` to see exact text or use `testId` strategy. |
-| `device_tap` | Raw coordinate tap. Coordinates must be in original device pixels, not image pixels. |
-| `device_swipe` | Swipe gesture by coordinates |
-| `device_type` | Type text (handles Unicode) |
-| `device_pinch` | Two-finger pinch/zoom |
-| `device_press_key` | Hardware keys: `back`, `home`, `recents`, `enter`, `delete`, `volume_up`, `volume_down`, `power`, `tab`, `search`, `space`, `menu`, `dpad_*`, and more. Also accepts raw Android keycodes. |
-| `device_rotate_gesture` | Two-finger rotation (Android only) |
+| Tool | Platform | Description |
+|------|----------|-------------|
+| `tap_on_element` | Android/iOS | **Recommended** — find + tap by selector. Note: text matching is exact; emoji prefixes (e.g. `🇫🇷 French A2`) break text matching — check `get_semantic_hierarchy` for exact text first. |
+| `device_tap` | Android/iOS | Raw coordinate tap. Must use original device pixels, not screenshot pixels. |
+| `device_swipe` | Android/iOS | Swipe by coordinates |
+| `device_type` | Android/iOS | Type text (handles Unicode) |
+| `device_pinch` | Android | Two-finger pinch/zoom |
+| `device_rotate_gesture` | Android | Two-finger rotation |
+| `device_press_key` | Android/iOS | Hardware keys: `back`, `home`, `recents`, `enter`, `delete`, `volume_up`, `volume_down`, `power`, `tab`, `search`, `space`, `menu`, `dpad_*`. Also accepts raw Android keycodes. |
 
 ### Environment & Logs
-| Tool | Description |
-|------|-------------|
-| `manage_bundler` | Start/stop/restart Metro bundler. Pass `deviceId` + `packageId` on Android for PID-based log filtering (eliminates system noise). |
-| `manage_platform_logs` | Manual control over `adb logcat` / `xcrun` log capture. Pass `deviceId` + `packageId` for per-app PID filtering. |
-| `get_bundler_logs` | Recent logs from Metro/Android/iOS. Returns `[status]` line showing whether capture is active — if empty, capture may not be running. |
-| `stream_errors` | Recent error/exception lines across all sources |
-| `get_network_logs` | Network-related logcat lines. Expo/RN: use filter `ReactNativeJS`. Native: `OkHttp`. |
-| `wait_for_log` | Block until a log pattern appears. **Always call from a background subagent** — calling directly blocks the conversation. Spawn subagent *before* the action that triggers the log. |
-| `manage_app_lifecycle` | Launch, stop, install, or uninstall apps |
-| `open_deep_link` | Open a URL or deep link on device |
-| `clear_app_data` | Reset app to fresh-install state |
-| `get_app_info` | Version, permissions, install date (Android) |
-| `set_system_locale` | Set device locale (e.g. `fr-FR`) |
-| `start_recording` / `stop_recording` | Screen recording (Android) |
-| `run_maestro_flow` | Run a Maestro YAML flow |
-| `run_doctor` | Run `npx expo-doctor` |
-| `install_deps` | Run `npx expo install <packages>` |
+| Tool | Platform | Description |
+|------|----------|-------------|
+| `manage_bundler` | Android/iOS | Start/stop/restart Metro. Pass `deviceId` + `packageId` for PID-based Android log filtering. |
+| `manage_platform_logs` | Android/iOS | Manual control over `adb logcat` / `xcrun` capture. Pass `deviceId` + `packageId` for per-app filtering. |
+| `get_bundler_logs` | Android/iOS | Recent Metro/Android/iOS logs. Returns `[status]` line — if buffer is empty, capture may not be running. |
+| `stream_errors` | Android/iOS | Recent error/exception lines across all sources |
+| `get_network_logs` | Android | Network logcat lines. Expo/RN: filter `ReactNativeJS`. Native: `OkHttp`. |
+| `wait_for_log` | Android/iOS | Block until a log pattern matches. See subagent pattern below. |
+| `manage_app_lifecycle` | Android/iOS | Launch, stop, install, or uninstall apps |
+| `open_deep_link` | Android/iOS | Open a URL or deep link |
+| `clear_app_data` | Android/iOS | Reset app to fresh-install state |
+| `get_app_info` | Android | Version, permissions, install date |
+| `set_system_locale` | Android/iOS | Set device locale (e.g. `fr-FR`) |
+| `start_recording` / `stop_recording` | Android | Screen recording to `.mp4` |
+| `run_maestro_flow` | Android/iOS | Run a Maestro YAML flow |
+| `run_doctor` | — | Run `npx expo-doctor` |
+| `install_deps` | — | Run `npx expo install <packages>` |
 
-### wait_for_log — Subagent Pattern
+### wait_for_log — Background Subagent Pattern
+
+`wait_for_log` blocks until a pattern appears in the log buffer. Calling it directly in the main agent freezes the conversation. Always delegate it to a background subagent in Claude Code:
 
 ```
-// 1. Spawn background subagent FIRST (before the action)
-Agent(background): call wait_for_log(pattern: "route: /home", timeout: 60000)
+// Step 1 — spawn the watcher BEFORE the action that will trigger the log
+// (In Claude Code, use Agent tool with run_in_background: true)
+// Subagent prompt: "Call wait_for_log with pattern 'route: /home', timeout 60000. Report the result."
 
-// 2. Perform the action in the main agent
-tap_on_element(...)
+// Step 2 — perform the action in the main agent
+tap_on_element(selector: "Home", strategy: "text", ...)
 
-// 3. Main agent continues; gets notified when subagent completes
+// Step 3 — main agent continues freely; gets notified when subagent finishes
 ```
 
 ## License
