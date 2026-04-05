@@ -398,13 +398,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "get_network_logs",
-        description: "Pull network-related logs from the device using adb logcat. For Expo / React Native apps, all console.log output (including fetchApi network traces) is emitted under the 'ReactNativeJS' logcat tag — use filter 'ReactNativeJS' or leave default. For native Android HTTP clients use 'OkHttp'. Note: a recurring warning 'ReconnectingWebSocket: Couldn't connect to ws://<host>:8081/inspector/network' is harmless — it means Metro bundler's DevTools WebSocket is not reachable from the device (Metro not running or port 8081 blocked). The app still works; start Metro via 'npx expo start' or 'npx react-native start' on the same network to silence it.",
+        description: "Pull network-related logs from the device. For Android, filters logcat. For iOS, filters the internal log capture buffer (must be running via manage_platform_logs or manage_bundler). For Expo / React Native apps, all console.log output (including fetchApi network traces) is emitted under the 'ReactNativeJS' logcat tag — use filter 'ReactNativeJS' or leave default. For native Android HTTP clients use 'OkHttp'. Note: a recurring warning 'ReconnectingWebSocket: Couldn't connect to ws://<host>:8081/inspector/network' is harmless — it means Metro bundler's DevTools WebSocket is not reachable from the device (Metro not running or port 8081 blocked). The app still works; start Metro via 'npx expo start' or 'npx react-native start' on the same network to silence it.",
         inputSchema: {
           type: "object",
           properties: {
             deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"], default: "android" },
             filter: { type: "string", description: "Regex matched against logcat lines (case-insensitive). Expo/RN: 'ReactNativeJS' (all console.log including fetchApi traces). Native Android: 'OkHttp', 'Volley', 'CRONET'. Default: 'ReactNativeJS|OkHttp|Volley|CRONET'" },
-            tailLength: { type: "number", description: "Number of raw logcat lines to scan before filtering (default 1000). Increase if recent logs have rolled out of the buffer." },
+            tailLength: { type: "number", description: "Number of raw log lines to scan before filtering (default 1000). Increase if recent logs have rolled out of the buffer." },
           },
           required: ["deviceId"],
         },
@@ -793,6 +794,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "get_network_logs") {
       const output = await getNetworkLogs(
         safeArgs.deviceId,
+        safeArgs.platform || "android",
         safeArgs.filter,
         safeArgs.tailLength
       );

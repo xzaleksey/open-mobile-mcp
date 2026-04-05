@@ -1,13 +1,14 @@
 import { Buffer } from "buffer";
-import { exec } from "child_process";
+import { exec, spawn, ChildProcess } from "child_process";
 import Jimp from "jimp";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { promisify } from "util";
 import path from "path";
+import fs from "fs";
 
 const execAsync = promisify(exec);
-const activeRecordings = new Map<string, any>();
+const activeRecordings = new Map<string, ChildProcess>();
 
 async function getAndroidScreenshot(deviceId: string): Promise<Buffer> {
   // Use exec-out for direct binary stream, avoiding CR/LF issues
@@ -130,65 +131,115 @@ export async function captureDiff(
 }
 
 /**
- * Start screen recording on Android
+ * Start screen recording
  */
 export async function startRecording(
   deviceId: string,
   platform: "android" | "ios"
 ): Promise<string> {
+  if (activeRecordings.has(deviceId)) {
+    throw new Error(`Recording already in progress for device ${deviceId}`);
+  }
+
   if (platform === "android") {
-    if (activeRecordings.has(deviceId)) {
-      throw new Error(`Recording already in progress for device ${deviceId}`);
-    }
-
-    // Start screenrecord in background
-    // Limit to 180s (ADB default/max) or we can manage it
-    execAsync(
-      `adb -s ${deviceId} shell screenrecord --size 720x1280 /sdcard/mcp_record.mp4`
-    );
-    activeRecordings.set(deviceId, true); // Just a flag that it's active
-
-    return "Recording started on /sdcard/mcp_record.mp4";
+    // Start screenrecord via spawn to keep handle
+    const proc = spawn("adb", [
+      "-s",
+      deviceId,
+      "shell",
+      "screenrecord",
+      "--size",
+      "720x1280",
+      "/sdcard/mcp_record.mp4",
+    ]);
+    activeRecordings.set(deviceId, proc);
+    return "Recording started on Android (/sdcard/mcp_record.mp4)";
   } else {
-    throw new Error("Screen recording not yet implemented for iOS");
+    // iOS Simulators support record-video
+    const tempPath = path.join(process.cwd(), `ios_rec_${deviceId}.mp4`);
+    const proc = spawn("xcrun", [
+      "simctl",
+      "io",
+      deviceId,
+      "record-video",
+      tempPath,
+    ]);
+
+    // Store path in the proc object for retrieval in stopRecording
+    (proc as any)._tempPath = tempPath;
+
+    activeRecordings.set(deviceId, proc);
+    return `Recording started on iOS (saving temporarily to ${tempPath})`;
   }
 }
 
 /**
- * Stop screen recording and pull the file
+ * Stop screen recording and save the file
  */
 export async function stopRecording(
   deviceId: string,
   platform: "android" | "ios",
   localPath: string
 ): Promise<string> {
+  const proc = activeRecordings.get(deviceId);
+  if (!proc) {
+    throw new Error(`No active recording found for device ${deviceId}`);
+  }
+
+  const absolutePath = path.resolve(localPath);
+
   if (platform === "android") {
-    if (!activeRecordings.has(deviceId)) {
-      throw new Error(`No active recording found for device ${deviceId}`);
-    }
-
     try {
-      // Send SIGINT to stop screenrecord gracefully
-      await execAsync(`adb -s ${deviceId} shell pkill -INT screenrecord`);
-      
-      // Wait a moment for file to finalize on device
-      await new Promise((r) => setTimeout(r, 1500));
+      // 1. Kill the process gracefully
+      proc.kill("SIGINT");
 
-      // Pull the file
-      const absolutePath = path.resolve(localPath);
-      await execAsync(`adb -s ${deviceId} pull /sdcard/mcp_record.mp4 "${absolutePath}"`);
-      
-      // Clean up on device
+      // Also try pkill on device just in case spawn handle is lost or detached
+      await execAsync(
+        `adb -s ${deviceId} shell pkill -INT screenrecord`
+      ).catch(() => {});
+
+      // 2. Wait for finalization
+      await new Promise((r) => setTimeout(r, 2000));
+
+      // 3. Pull the file
+      await execAsync(
+        `adb -s ${deviceId} pull /sdcard/mcp_record.mp4 "${absolutePath}"`
+      );
+
+      // 4. Clean up
       await execAsync(`adb -s ${deviceId} shell rm /sdcard/mcp_record.mp4`);
-      
-      activeRecordings.delete(deviceId);
 
+      activeRecordings.delete(deviceId);
       return `Recording saved to ${absolutePath}`;
     } catch (e: any) {
       activeRecordings.delete(deviceId);
-      throw new Error(`Failed to stop/pull recording: ${e.message}`);
+      throw new Error(`Failed to stop/pull Android recording: ${e.message}`);
     }
   } else {
-    throw new Error("Screen recording not yet implemented for iOS");
+    try {
+      const tempPath = (proc as any)._tempPath;
+
+      // 1. Kill simctl record-video
+      proc.kill("SIGINT");
+
+      // 2. Wait for file to finalize
+      await new Promise((r) => setTimeout(r, 2000));
+
+      // 3. Move/Copy to final destination
+      if (fs.existsSync(tempPath)) {
+        fs.copyFileSync(tempPath, absolutePath);
+        fs.unlinkSync(tempPath);
+      } else {
+        throw new Error(
+          "Temporary recording file not found. Recording might have failed to start."
+        );
+      }
+
+      activeRecordings.delete(deviceId);
+      return `Recording saved to ${absolutePath}`;
+    } catch (e: any) {
+      activeRecordings.delete(deviceId);
+      throw new Error(`Failed to stop iOS recording: ${e.message}`);
+    }
   }
 }

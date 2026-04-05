@@ -493,22 +493,33 @@ export async function waitForLog(
 }
 
 /**
- * Filter adb logcat for network tags or regex.
- * Filtering is done in JS (not via adb -e) to avoid shell pipe-splitting
- * on Windows cmd.exe where | inside quotes is not protected.
+ * Filter platform logs for network tags or regex.
  */
 export async function getNetworkLogs(
   deviceId: string,
+  platform: "android" | "ios" = "android",
   filter: string = "ReactNativeJS|OkHttp|Volley|CRONET",
   tailLength: number = 1000
 ): Promise<string> {
-  const { stdout } = await execAsync(
-    `adb -s ${deviceId} logcat -d -t ${tailLength}`
-  );
   const regex = new RegExp(filter, "i");
-  const matched = stdout
-    .split("\n")
-    .filter((line) => regex.test(line))
-    .join("\n");
-  return matched;
+
+  if (platform === "android") {
+    const { stdout } = await execAsync(
+      `adb -s ${deviceId} logcat -d -t ${tailLength}`
+    );
+    return stdout
+      .split("\n")
+      .filter((line) => regex.test(line))
+      .join("\n");
+  } else {
+    // iOS: Filter the internal log buffer
+    // Note: This requires that manage_platform_logs or manage_bundler was already called for iOS.
+    if (iosLogBuffer.length === 0) {
+      return "[no iOS logs captured — use manage_platform_logs(platform: 'ios', action: 'start') to enable capture]";
+    }
+    return iosLogBuffer
+      .slice(-tailLength)
+      .filter((line) => regex.test(line))
+      .join("\n");
+  }
 }

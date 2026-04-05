@@ -19,8 +19,10 @@ Works with **Claude Code**, **Claude Desktop**, **Cursor**, and any other MCP-co
 3. **Maestro** (required for iOS; fallback for Android input).
 
    - **Mac/Linux**: `curl -Ls "https://get.maestro.mobile.dev" | bash`
+
    - **Windows**:
-     ```powershell
+
+      ```powershell
      powershell -Command "iwr -useb https://get.maestro.mobile.dev | iex"
      ```
 
@@ -29,7 +31,8 @@ Works with **Claude Code**, **Claude Desktop**, **Cursor**, and any other MCP-co
 
 ## Configuration
 
-**macOS / Linux**
+### macOS / Linux
+
 ```json
 {
   "mcpServers": {
@@ -41,7 +44,8 @@ Works with **Claude Code**, **Claude Desktop**, **Cursor**, and any other MCP-co
 }
 ```
 
-**Windows**
+### Windows
+
 ```json
 {
   "mcpServers": {
@@ -74,8 +78,9 @@ Then use `"command": "node", "args": ["/path/to/open-mobile-mcp/build/index.js"]
 ## Tools
 
 ### Perception
+
 | Tool | Platform | Description |
-|------|----------|-------------|
+| :--- | :--- | :--- |
 | `device_list` | Android/iOS | List connected emulators and simulators |
 | `get_viewport` | Android/iOS | Screenshot (~800px wide). **Use `originalWidth`/`originalHeight` for tap coordinates** — the image is scaled down, tapping at image pixels will miss. |
 | `get_semantic_hierarchy` | Android/iOS | Pruned UI tree as JSON |
@@ -88,8 +93,9 @@ Then use `"command": "node", "args": ["/path/to/open-mobile-mcp/build/index.js"]
 | `analyze_layout_health` | Android/iOS | Detect deep nesting and layout performance issues |
 
 ### Interaction
+
 | Tool | Platform | Description |
-|------|----------|-------------|
+| :--- | :--- | :--- |
 | `tap_on_element` | Android/iOS | **Recommended** — find + tap by selector. Note: text matching is exact; emoji prefixes (e.g. `🇫🇷 French A2`) break text matching — check `get_semantic_hierarchy` for exact text first. |
 | `device_tap` | Android/iOS | Raw coordinate tap. Must use original device pixels, not screenshot pixels. |
 | `device_swipe` | Android/iOS | Swipe by coordinates |
@@ -99,20 +105,21 @@ Then use `"command": "node", "args": ["/path/to/open-mobile-mcp/build/index.js"]
 | `device_press_key` | Android/iOS | Hardware keys: `back`, `home`, `recents`, `enter`, `delete`, `volume_up`, `volume_down`, `power`, `tab`, `search`, `space`, `menu`, `dpad_*`. Also accepts raw Android keycodes. |
 
 ### Environment & Logs
+
 | Tool | Platform | Description |
-|------|----------|-------------|
+| :--- | :--- | :--- |
 | `manage_bundler` | Android/iOS | Start/stop/restart Metro. Pass `deviceId` + `packageId` for PID-based Android log filtering. |
 | `manage_platform_logs` | Android/iOS | Manual control over `adb logcat` / `xcrun` capture. Pass `deviceId` + `packageId` for per-app filtering. |
 | `get_bundler_logs` | Android/iOS | Recent Metro/Android/iOS logs. Returns `[status]` line — if buffer is empty, capture may not be running. |
 | `stream_errors` | Android/iOS | Recent error/exception lines across all sources |
-| `get_network_logs` | Android | Network logcat lines. Expo/RN: filter `ReactNativeJS`. Native: `OkHttp`. |
+| `get_network_logs` | Android/iOS | Network logcat lines. For iOS, filters the internal log capture buffer (enable via `manage_platform_logs`). |
 | `wait_for_log` | Android/iOS | Block until a log pattern matches. See subagent pattern below. |
 | `manage_app_lifecycle` | Android/iOS | Launch, stop, install, or uninstall apps |
 | `open_deep_link` | Android/iOS | Open a URL or deep link |
 | `clear_app_data` | Android/iOS | Reset app to fresh-install state |
 | `get_app_info` | Android | Version, permissions, install date |
 | `set_system_locale` | Android/iOS | Set device locale (e.g. `fr-FR`) |
-| `start_recording` / `stop_recording` | Android | Screen recording to `.mp4` |
+| `start_recording` / `stop_recording` | Android/iOS | Screen recording to `.mp4` (Android uses `screenrecord`, iOS uses `simctl io`). |
 | `run_maestro_flow` | Android/iOS | Run a Maestro YAML flow |
 | `run_doctor` | — | Run `npx expo-doctor` |
 | `install_deps` | — | Run `npx expo install <packages>` |
@@ -121,13 +128,13 @@ Then use `"command": "node", "args": ["/path/to/open-mobile-mcp/build/index.js"]
 
 `wait_for_log` blocks until a pattern appears in the log buffer. Calling it directly in the main agent freezes the conversation. Always delegate it to a background subagent in Claude Code:
 
-```
+```typescript
 // Step 1 — spawn the watcher BEFORE the action that will trigger the log
 // (In Claude Code, use Agent tool with run_in_background: true)
 // Subagent prompt: "Call wait_for_log with pattern 'route: /home', timeout 60000. Report the result."
 
 // Step 2 — perform the action in the main agent
-tap_on_element(selector: "Home", strategy: "text", ...)
+tap_on_element({ selector: "Home", strategy: "text" });
 
 // Step 3 — main agent continues freely; gets notified when subagent finishes
 ```
