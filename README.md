@@ -28,36 +28,27 @@ An open-source **Model Context Protocol (MCP)** server for mobile automation. It
    - Download from [GitHub](https://github.com/senzhk/ADBKeyBoard).
    - Install: `adb install ADBKeyboard.apk`.
 
-## Installation
-
-```bash
-git clone https://github.com/xzaleksey/open-mobile-mcp.git
-cd open-mobile-mcp
-npm install
-npm run build
-```
-
 ## Configuration
 
-**macOS / Linux**
+**macOS / Linux** — via npx (recommended)
 ```json
 {
   "mcpServers": {
     "open-mobile-mcp": {
-      "command": "node",
-      "args": ["/path/to/open-mobile-mcp/build/index.js"]
+      "command": "npx",
+      "args": ["open-mobile-mcp"]
     }
   }
 }
 ```
 
-**Windows**
+**Windows** — via npx (recommended)
 ```json
 {
   "mcpServers": {
     "open-mobile-mcp": {
-      "command": "node",
-      "args": ["C:\\path\\to\\open-mobile-mcp\\build\\index.js"],
+      "command": "npx",
+      "args": ["open-mobile-mcp"],
       "env": {
         "MAESTRO_HOME": "C:\\Users\\YOUR_USER\\.maestro",
         "PATH": "C:\\Users\\YOUR_USER\\.maestro\\maestro\\bin;C:\\Windows\\system32;C:\\Windows;..."
@@ -68,6 +59,18 @@ npm run build
 ```
 
 > **Note**: On Windows, explicitly setting `MAESTRO_HOME` and `PATH` is often required for `maestro` to be found. On macOS/Linux this is usually not needed if Maestro was installed via the official script.
+
+<details>
+<summary>Running from source</summary>
+
+```bash
+git clone https://github.com/xzaleksey/open-mobile-mcp.git
+cd open-mobile-mcp
+npm install && npm run build
+```
+
+Then use `"command": "node", "args": ["/path/to/open-mobile-mcp/build/index.js"]` in your MCP config.
+</details>
 
 ## Tools
 
