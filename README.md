@@ -39,6 +39,19 @@ npm run build
 
 ## Configuration
 
+**macOS / Linux**
+```json
+{
+  "mcpServers": {
+    "open-mobile-mcp": {
+      "command": "node",
+      "args": ["/path/to/open-mobile-mcp/build/index.js"]
+    }
+  }
+}
+```
+
+**Windows**
 ```json
 {
   "mcpServers": {
@@ -54,7 +67,7 @@ npm run build
 }
 ```
 
-> **Note**: On Windows, explicitly setting `MAESTRO_HOME` and `PATH` is often required for `maestro` to be found.
+> **Note**: On Windows, explicitly setting `MAESTRO_HOME` and `PATH` is often required for `maestro` to be found. On macOS/Linux this is usually not needed if Maestro was installed via the official script.
 
 ## Tools
 
