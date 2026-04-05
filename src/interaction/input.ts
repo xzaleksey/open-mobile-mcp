@@ -23,8 +23,13 @@ export async function deviceTap(
   platform: "android" | "ios",
   x: number,
   y: number,
-  isLogical: boolean = false
+  isLogical: boolean = false,
+  duration: number = 0
 ): Promise<void> {
+  if (duration > 0) {
+    return deviceSwipe(deviceId, platform, x, y, x, y, isLogical, duration);
+  }
+
   if (platform === "android") {
     // Android: scale coordinates if we have physical pixels but shell expects logical
     let targetX = x;
@@ -215,7 +220,8 @@ export async function deviceSwipe(
   y1: number,
   x2: number,
   y2: number,
-  isLogical: boolean = false
+  isLogical: boolean = false,
+  duration: number = 300
 ): Promise<void> {
   if (platform === "android") {
     let tx1 = x1,
@@ -249,7 +255,7 @@ export async function deviceSwipe(
     }
 
     await execAsync(
-      `adb -s ${deviceId} shell input swipe ${tx1} ${ty1} ${tx2} ${ty2}`
+      `adb -s ${deviceId} shell input swipe ${tx1} ${ty1} ${tx2} ${ty2} ${duration}`
     );
   } else {
     // iOS swipe via Maestro - coordinates as quoted strings "x, y"

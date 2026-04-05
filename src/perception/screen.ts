@@ -6,6 +6,7 @@ import { PNG } from "pngjs";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
+const activeRecordings = new Map<string, any>();
 
 async function getAndroidScreenshot(deviceId: string): Promise<Buffer> {
   // Use exec-out for direct binary stream, avoiding CR/LF issues
@@ -125,4 +126,67 @@ export async function captureDiff(
     diffPercentage,
     diffImageBase64: PNG.sync.write(diff).toString("base64"),
   };
+}
+
+/**
+ * Start screen recording on Android
+ */
+export async function startRecording(
+  deviceId: string,
+  platform: "android" | "ios"
+): Promise<string> {
+  if (platform === "android") {
+    if (activeRecordings.has(deviceId)) {
+      throw new Error(`Recording already in progress for device ${deviceId}`);
+    }
+
+    // Start screenrecord in background
+    // Limit to 180s (ADB default/max) or we can manage it
+    execAsync(
+      `adb -s ${deviceId} shell screenrecord --size 720x1280 /sdcard/mcp_record.mp4`
+    );
+    activeRecordings.set(deviceId, true); // Just a flag that it's active
+
+    return "Recording started on /sdcard/mcp_record.mp4";
+  } else {
+    throw new Error("Screen recording not yet implemented for iOS");
+  }
+}
+
+/**
+ * Stop screen recording and pull the file
+ */
+export async function stopRecording(
+  deviceId: string,
+  platform: "android" | "ios",
+  localPath: string
+): Promise<string> {
+  if (platform === "android") {
+    if (!activeRecordings.has(deviceId)) {
+      throw new Error(`No active recording found for device ${deviceId}`);
+    }
+
+    try {
+      // Send SIGINT to stop screenrecord gracefully
+      await execAsync(`adb -s ${deviceId} shell pkill -INT screenrecord`);
+      
+      // Wait a moment for file to finalize on device
+      await new Promise((r) => setTimeout(r, 1500));
+
+      // Pull the file
+      await execAsync(`adb -s ${deviceId} pull /sdcard/mcp_record.mp4 "${localPath}"`);
+      
+      // Clean up on device
+      await execAsync(`adb -s ${deviceId} shell rm /sdcard/mcp_record.mp4`);
+      
+      activeRecordings.delete(deviceId);
+
+      return `Recording saved to ${localPath}`;
+    } catch (e: any) {
+      activeRecordings.delete(deviceId);
+      throw new Error(`Failed to stop/pull recording: ${e.message}`);
+    }
+  } else {
+    throw new Error("Screen recording not yet implemented for iOS");
+  }
 }

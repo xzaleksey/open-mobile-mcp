@@ -16,6 +16,7 @@ import {
 } from "./environment/metro.js";
 import { deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
+import { setSystemLocale } from "./interaction/navigation.js";
 import { openDeepLink } from "./interaction/navigation.js";
 import { listDevices } from "./perception/device.js";
 import {
@@ -26,7 +27,11 @@ import {
 } from "./perception/element.js";
 import { getSemanticHierarchy } from "./perception/hierarchy.js";
 import { configureOcr, getScreenText } from "./perception/ocr.js";
-import { captureDiff, getViewport } from "./perception/screen.js";
+import { captureDiff, getViewport, startRecording, stopRecording } from "./perception/screen.js";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 const server = new Server(
   {
@@ -126,6 +131,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "number",
               description: "Y coordinate in original screen pixels",
             },
+            duration: {
+              type: "number",
+              description: "Optional duration in ms. If > 0, performs a long press.",
+            },
           },
           required: ["deviceId", "platform", "x", "y"],
         },
@@ -168,8 +177,50 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "number",
               description: "End Y coordinate in original screen pixels",
             },
+            duration: {
+              type: "number",
+              description: "Optional duration in ms. Default is 300.",
+            },
           },
           required: ["deviceId", "platform", "x1", "y1", "x2", "y2"],
+        },
+      },
+      {
+        name: "set_system_locale",
+        description: "Set the system locale for the device (Android or iOS Simulator).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            locale: { type: "string", description: "Locale tag, e.g. 'en-US', 'fr-FR'" },
+          },
+          required: ["deviceId", "platform", "locale"],
+        },
+      },
+      {
+        name: "start_recording",
+        description: "Start screen recording on the device.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+          },
+          required: ["deviceId", "platform"],
+        },
+      },
+      {
+        name: "stop_recording",
+        description: "Stop screen recording and save the file.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            localPath: { type: "string", description: "Local destination path for the .mp4 file" },
+          },
+          required: ["deviceId", "platform", "localPath"],
         },
       },
       {
@@ -468,7 +519,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         safeArgs.deviceId,
         safeArgs.platform,
         safeArgs.x,
-        safeArgs.y
+        safeArgs.y,
+        false, // isLogical defaults to false for low-level tool
+        safeArgs.duration || 0
       );
       return { content: [{ type: "text", text: "Tap executed" }] };
     }
@@ -483,7 +536,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         safeArgs.x1,
         safeArgs.y1,
         safeArgs.x2,
-        safeArgs.y2
+        safeArgs.y2,
+        false, // isLogical defaults to false for low-level tool
+        safeArgs.duration || 300
       );
       return { content: [{ type: "text", text: "Swipe executed" }] };
     }
@@ -601,6 +656,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
+    }
+    if (name === "set_system_locale") {
+      const output = await setSystemLocale(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.locale
+      );
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "start_recording") {
+      const output = await startRecording(safeArgs.deviceId, safeArgs.platform);
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "stop_recording") {
+      const output = await stopRecording(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.localPath
+      );
+      return { content: [{ type: "text", text: output }] };
     }
   } catch (error: any) {
     return {
