@@ -18,7 +18,6 @@ import {
 } from "./environment/metro.js";
 import { clearAppData, devicePinch, devicePressKey, deviceRotateGesture, deviceSwipe, deviceTap, deviceType, getAppInfo } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
-import { setSystemLocale } from "./interaction/navigation.js";
 import { openDeepLink } from "./interaction/navigation.js";
 import { listDevices } from "./perception/device.js";
 import {
@@ -303,19 +302,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             packageId: { type: "string", description: "Android package ID (e.g. 'com.google.android.apps.maps')" },
           },
           required: ["deviceId", "platform", "packageId"],
-        },
-      },
-      {
-        name: "set_system_locale",
-        description: "Set the system locale for the device (Android or iOS Simulator).",
-        inputSchema: {
-          type: "object",
-          properties: {
-            deviceId: { type: "string" },
-            platform: { type: "string", enum: ["android", "ios"] },
-            locale: { type: "string", description: "Locale tag, e.g. 'en-US', 'fr-FR'" },
-          },
-          required: ["deviceId", "platform", "locale"],
         },
       },
       {
@@ -919,14 +905,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           },
         ],
       };
-    }
-    if (name === "set_system_locale") {
-      const output = await setSystemLocale(
-        safeArgs.deviceId,
-        safeArgs.platform,
-        safeArgs.locale
-      );
-      return { content: [{ type: "text", text: output }] };
     }
     if (name === "start_recording") {
       const output = await startRecording(safeArgs.deviceId, safeArgs.platform);

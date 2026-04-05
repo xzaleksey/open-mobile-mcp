@@ -20,27 +20,3 @@ export async function openDeepLink(
   return `Opened URL: ${url}`;
 }
 
-/**
- * Set the system locale on Android
- */
-export async function setSystemLocale(
-  deviceId: string,
-  platform: "android" | "ios",
-  locale: string
-): Promise<string> {
-  if (platform === "android") {
-    // Note: This often requires a permission: adb shell pm grant com.learningai.client android.permission.CHANGE_CONFIGURATION
-    // But on many emulators/debug builds, the broadcast works or we can use settings put
-    // Most reliable for AI context is broadcast + settings put
-    try {
-      await execAsync(
-        `adb -s ${deviceId} shell "settings put global system_locales ${locale} && am broadcast -a android.intent.action.LOCALE_CHANGED"`
-      );
-      return `Locale set to ${locale} (Broadcast sent)`;
-    } catch (e: any) {
-      throw new Error(`Failed to set locale: ${e.message}`);
-    }
-  } else {
-    throw new Error("Set locale not yet implemented for iOS");
-  }
-}

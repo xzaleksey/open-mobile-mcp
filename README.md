@@ -118,7 +118,6 @@ Then use `"command": "node", "args": ["/path/to/open-mobile-mcp/build/index.js"]
 | `open_deep_link` | Android/iOS | Open a URL or deep link |
 | `clear_app_data` | Android/iOS | Reset app to fresh-install state |
 | `get_app_info` | Android | Version, permissions, install date |
-| `set_system_locale` | Android/iOS | Set device locale (e.g. `fr-FR`) |
 | `start_recording` / `stop_recording` | Android/iOS | Screen recording to `.mp4` (Android uses `screenrecord`, iOS uses `simctl io`). |
 | `run_maestro_flow` | Android/iOS | Run a Maestro YAML flow |
 | `run_doctor` | — | Run `npx expo-doctor` |
