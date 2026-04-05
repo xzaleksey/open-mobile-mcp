@@ -311,3 +311,18 @@ export function getLogs(
       return logBuffer.slice(-tailLength).join("\n");
   }
 }
+
+/**
+ * Filter adb logcat for network tags or regex
+ */
+export async function getNetworkLogs(
+  deviceId: string,
+  filter: string = "OkHttp|Volley|CRONET",
+  tailLength: number = 1000
+): Promise<string> {
+  // Use -e for regex filtering in logcat
+  const { stdout } = await execAsync(
+    `adb -s ${deviceId} logcat -d -e "${filter}" -t ${tailLength}`
+  );
+  return stdout;
+}

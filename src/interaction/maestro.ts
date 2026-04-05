@@ -13,29 +13,26 @@ export async function runMaestroFlow(
   deviceId: string,
   flowYaml: string
 ): Promise<string> {
-  // Create temp file
   const tmpDir = os.tmpdir();
   const filePath = path.join(tmpDir, `maestro_flow_${Date.now()}.yaml`);
 
   // Maestro requires an appId config section before the flow commands
-  // Using empty appId allows running on any currently visible app
-  const flowWithConfig = `appId: ""
+  // Only prepend if not provided by user
+  const flowWithConfig = flowYaml.includes("appId:")
+    ? flowYaml
+    : `appId: ""
 ${flowYaml}`;
 
   await fs.writeFile(filePath, flowWithConfig, "utf8");
 
   try {
     // assumes maestro is in PATH
-    // Use --device argument if maestro supports it (it usually selects the active one or via GUID)
-    // Command: maestro --device <id> test <file>
-    // The --device flag is often a global flag in newer Maestro versions, or we try env var
-    // User reported "Unknown option --device" for "maestro test --device".
-    // We will try command: maestro --device <id> test ...
+    // Command in 2.0.5+: maestro test <file>
     const { stdout, stderr } = await execAsync(
-      `maestro --device ${deviceId} test "${filePath}"`,
+      `maestro test "${filePath}"`,
       { timeout: MAESTRO_TIMEOUT_MS }
     );
-    return stdout;
+    return stdout + (stderr ? "\n" + stderr : "");
   } catch (error: any) {
     if (error.killed) {
       throw new Error(

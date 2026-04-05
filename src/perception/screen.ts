@@ -4,6 +4,7 @@ import Jimp from "jimp";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { promisify } from "util";
+import path from "path";
 
 const execAsync = promisify(exec);
 const activeRecordings = new Map<string, any>();
@@ -174,14 +175,15 @@ export async function stopRecording(
       await new Promise((r) => setTimeout(r, 1500));
 
       // Pull the file
-      await execAsync(`adb -s ${deviceId} pull /sdcard/mcp_record.mp4 "${localPath}"`);
+      const absolutePath = path.resolve(localPath);
+      await execAsync(`adb -s ${deviceId} pull /sdcard/mcp_record.mp4 "${absolutePath}"`);
       
       // Clean up on device
       await execAsync(`adb -s ${deviceId} shell rm /sdcard/mcp_record.mp4`);
       
       activeRecordings.delete(deviceId);
 
-      return `Recording saved to ${localPath}`;
+      return `Recording saved to ${absolutePath}`;
     } catch (e: any) {
       activeRecordings.delete(deviceId);
       throw new Error(`Failed to stop/pull recording: ${e.message}`);

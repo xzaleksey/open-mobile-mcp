@@ -10,11 +10,12 @@ import { installDeps, runDoctor } from "./environment/doctor.js";
 import { manageAppLifecycle } from "./environment/lifecycle.js";
 import {
   getLogs,
+  getNetworkLogs,
   manageBundler,
   managePlatformLogs,
   streamErrors,
 } from "./environment/metro.js";
-import { deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
+import { devicePinch, deviceSwipe, deviceTap, deviceType } from "./interaction/input.js";
 import { runMaestroFlow } from "./interaction/maestro.js";
 import { setSystemLocale } from "./interaction/navigation.js";
 import { openDeepLink } from "./interaction/navigation.js";
@@ -25,6 +26,7 @@ import {
   waitForElement,
   tapOnElement,
 } from "./perception/element.js";
+import { analyzeLayoutHealth } from "./perception/layout.js";
 import { getSemanticHierarchy } from "./perception/hierarchy.js";
 import { configureOcr, getScreenText } from "./perception/ocr.js";
 import { captureDiff, getViewport, startRecording, stopRecording } from "./perception/screen.js";
@@ -186,6 +188,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "analyze_layout_health",
+        description: "Analyze the UI layout for performance or health issues (e.g. deep nesting).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+          },
+          required: ["deviceId", "platform"],
+        },
+      },
+      {
+        name: "device_pinch",
+        description:
+          "Perform a pinch gesture (two-finger zoom) on the device. Use 'out' to zoom in (fingers spread apart) and 'in' to zoom out (fingers come together). Works well for maps and other zoomable content. On Android, uses two simultaneous input swipes.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            platform: { type: "string", enum: ["android", "ios"] },
+            centerX: {
+              type: "number",
+              description: "X coordinate of the pinch center in original screen pixels",
+            },
+            centerY: {
+              type: "number",
+              description: "Y coordinate of the pinch center in original screen pixels",
+            },
+            direction: {
+              type: "string",
+              enum: ["in", "out"],
+              description: "'out' = zoom in (spread fingers apart), 'in' = zoom out (fingers come together)",
+            },
+            spread: {
+              type: "number",
+              description: "Max distance in logical pixels each finger travels from center (default 200)",
+            },
+            duration: {
+              type: "number",
+              description: "Gesture duration in ms (default 500)",
+            },
+          },
+          required: ["deviceId", "platform", "centerX", "centerY", "direction"],
+        },
+      },
+      {
         name: "set_system_locale",
         description: "Set the system locale for the device (Android or iOS Simulator).",
         inputSchema: {
@@ -200,7 +248,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "start_recording",
-        description: "Start screen recording on the device.",
+        description: "Start screen recording on the device. Use an absolute path for localPath when stopping to ensure you can find the file.",
         inputSchema: {
           type: "object",
           properties: {
@@ -212,13 +260,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "stop_recording",
-        description: "Stop screen recording and save the file.",
+        description: "Stop screen recording and save the file. Use an absolute path for localPath to ensure you can find the file.",
         inputSchema: {
           type: "object",
           properties: {
             deviceId: { type: "string" },
             platform: { type: "string", enum: ["android", "ios"] },
-            localPath: { type: "string", description: "Local destination path for the .mp4 file" },
+            localPath: { type: "string", description: "Local destination path for the .mp4 file (e.g. C:\\Users\\...\\recording.mp4)" },
           },
           required: ["deviceId", "platform", "localPath"],
         },
@@ -258,6 +306,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
           },
           required: ["action"],
+        },
+      },
+      {
+        name: "get_network_logs",
+        description: "Pull filtered network logs from the device using adb logcat.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            deviceId: { type: "string" },
+            filter: { type: "string", description: "Tag or regex to filter by (default: OkHttp|Volley|CRONET)" },
+            tailLength: { type: "number", description: "Number of lines to pull (default 1000)" },
+          },
+          required: ["deviceId"],
         },
       },
       {
@@ -542,6 +603,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       );
       return { content: [{ type: "text", text: "Swipe executed" }] };
     }
+    if (name === "device_pinch") {
+      await devicePinch(
+        safeArgs.deviceId,
+        safeArgs.platform,
+        safeArgs.centerX,
+        safeArgs.centerY,
+        safeArgs.direction,
+        safeArgs.spread || 200,
+        safeArgs.duration || 500,
+        false
+      );
+      return { content: [{ type: "text", text: "Pinch executed" }] };
+    }
     if (name === "run_maestro_flow") {
       const output = await runMaestroFlow(safeArgs.deviceId, safeArgs.flowYaml);
       return { content: [{ type: "text", text: output }] };
@@ -554,6 +628,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         safeArgs.autoStartPlatformLogs
       );
       return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "get_network_logs") {
+      const output = await getNetworkLogs(
+        safeArgs.deviceId,
+        safeArgs.filter,
+        safeArgs.tailLength
+      );
+      return { content: [{ type: "text", text: output }] };
+    }
+    if (name === "analyze_layout_health") {
+      const report = await analyzeLayoutHealth(
+        safeArgs.deviceId,
+        safeArgs.platform
+      );
+      return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
     }
     if (name === "stream_errors") {
       const output = streamErrors(safeArgs.tailLength);

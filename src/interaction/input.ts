@@ -213,6 +213,90 @@ export async function deviceType(
   }
 }
 
+export async function devicePinch(
+  deviceId: string,
+  platform: "android" | "ios",
+  centerX: number,
+  centerY: number,
+  direction: "in" | "out",
+  spread: number = 200,
+  duration: number = 500,
+  isLogical: boolean = false
+): Promise<void> {
+  // "out" = zoom in (fingers spread apart), "in" = zoom out (fingers come together)
+  const nearOffset = Math.round(spread * 0.15);
+  const farOffset = spread;
+
+  if (platform === "android") {
+    let cx = centerX;
+    let cy = centerY;
+    let near = nearOffset;
+    let far = farOffset;
+
+    if (!isLogical) {
+      try {
+        const { stdout } = await execAsync(`adb -s ${deviceId} shell wm size`);
+        const overrideMatch = stdout.match(/Override size: (\d+)x(\d+)/);
+        const physicalMatch = stdout.match(/Physical size: (\d+)x(\d+)/);
+
+        if (overrideMatch && physicalMatch) {
+          const physW = parseInt(physicalMatch[1]);
+          const physH = parseInt(physicalMatch[2]);
+          const logW = parseInt(overrideMatch[1]);
+          const logH = parseInt(overrideMatch[2]);
+          const sx = logW / physW;
+          const sy = logH / physH;
+
+          cx = Math.round(centerX * sx);
+          cy = Math.round(centerY * sy);
+          near = Math.round(nearOffset * sx);
+          far = Math.round(farOffset * sx);
+        }
+      } catch (e) {
+        // Use raw coordinates
+      }
+    }
+
+    let x1s: number, x1e: number, x2s: number, x2e: number;
+    if (direction === "out") {
+      // Zoom in: fingers spread from near to far
+      x1s = cx - near; x1e = cx - far;
+      x2s = cx + near; x2e = cx + far;
+    } else {
+      // Zoom out: fingers come from far to near
+      x1s = cx - far; x1e = cx - near;
+      x2s = cx + far; x2e = cx + near;
+    }
+
+    // Run two simultaneous swipes inside a single shell invocation
+    const shellCmd = `input swipe ${x1s} ${cy} ${x1e} ${cy} ${duration} & input swipe ${x2s} ${cy} ${x2e} ${cy} ${duration}; wait`;
+    await execAsync(`adb -s ${deviceId} shell "${shellCmd}"`);
+  } else {
+    // iOS: use Maestro swipe on two points to approximate pinch
+    // Maestro doesn't have a native pinch command, so we simulate with two sequential swipes
+    const near = nearOffset;
+    const far = farOffset;
+    let x1s: number, x1e: number, x2s: number, x2e: number;
+    if (direction === "out") {
+      x1s = centerX - near; x1e = centerX - far;
+      x2s = centerX + near; x2e = centerX + far;
+    } else {
+      x1s = centerX - far; x1e = centerX - near;
+      x2s = centerX + far; x2e = centerX + near;
+    }
+    const flowYaml = `
+---
+- swipe:
+    start: "${x1s}, ${centerY}"
+    end: "${x1e}, ${centerY}"
+- swipe:
+    start: "${x2s}, ${centerY}"
+    end: "${x2e}, ${centerY}"
+`;
+    await runMaestroFlow(deviceId, flowYaml);
+  }
+}
+
 export async function deviceSwipe(
   deviceId: string,
   platform: "android" | "ios",
