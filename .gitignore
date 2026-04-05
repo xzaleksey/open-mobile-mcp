@@ -43,7 +43,6 @@ pinch-driver/*-unsigned.apk
 
 # Test/scratch files
 record_final.mp4
-test_pinch.yaml
 
 # Tesseract
 *.traineddata
