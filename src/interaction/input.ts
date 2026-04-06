@@ -337,7 +337,7 @@ export async function devicePressKey(
 ): Promise<void> {
   if (platform === "ios") {
     const flowYaml = `\n---\n- pressKey: ${key}\n`;
-    await runMaestroFlow(deviceId, flowYaml);
+    await runMaestroFlow(deviceId, flowYaml, 60000);
     return;
   }
 

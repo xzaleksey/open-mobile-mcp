@@ -11,13 +11,12 @@ const MAESTRO_TIMEOUT_MS = 30000;
 
 export async function runMaestroFlow(
   deviceId: string,
-  flowYaml: string
+  flowYaml: string,
+  timeout?: number
 ): Promise<string> {
   const tmpDir = os.tmpdir();
   const filePath = path.join(tmpDir, `maestro_flow_${Date.now()}.yaml`);
 
-  // Maestro requires an appId config section before the flow commands
-  // Only prepend if not provided by user
   const flowWithConfig = flowYaml.includes("appId:")
     ? flowYaml
     : `appId: ""
@@ -25,24 +24,23 @@ ${flowYaml}`;
 
   await fs.writeFile(filePath, flowWithConfig, "utf8");
 
+  const effectiveTimeout = timeout ?? MAESTRO_TIMEOUT_MS;
+
   try {
-    // assumes maestro is in PATH
-    // Command in 2.0.5+: maestro test <file>
     const { stdout, stderr } = await execAsync(
       `maestro test "${filePath}"`,
-      { timeout: MAESTRO_TIMEOUT_MS }
+      { timeout: effectiveTimeout }
     );
     return stdout + (stderr ? "\n" + stderr : "");
   } catch (error: any) {
     if (error.killed) {
       throw new Error(
-        `Maestro execution timed out after ${MAESTRO_TIMEOUT_MS}ms`
+        `Maestro execution timed out after ${effectiveTimeout}ms`
       );
     }
-    if (error.stdout) return error.stdout; // Return output even if failed
+    if (error.stdout) return error.stdout;
     throw new Error(`Maestro execution failed: ${error.message}`);
   } finally {
-    // Cleanup
     await fs.unlink(filePath).catch(() => {});
   }
 }

@@ -6,6 +6,7 @@ import { PNG } from "pngjs";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
+import os from "os";
 
 const execAsync = promisify(exec);
 const activeRecordings = new Map<string, ChildProcess>();
@@ -155,21 +156,49 @@ export async function startRecording(
     activeRecordings.set(deviceId, proc);
     return "Recording started on Android (/sdcard/mcp_record.mp4)";
   } else {
-    // iOS Simulators support record-video
-    const tempPath = path.join(process.cwd(), `ios_rec_${deviceId}.mp4`);
+    const tempPath = path.join(os.tmpdir(), `ios_rec_${deviceId}.mp4`);
+
+    try { fs.unlinkSync(tempPath); } catch {}
+
     const proc = spawn("xcrun", [
-      "simctl",
-      "io",
-      deviceId,
-      "record-video",
+      "simctl", "io", deviceId, "recordVideo",
+      "--codec=h264", "--force",
       tempPath,
     ]);
 
-    // Store path in the proc object for retrieval in stopRecording
+    let stderrOutput = "";
+    proc.stderr.on("data", (d) => { stderrOutput += d.toString(); });
+    proc.on("error", (err) => {
+      console.error(`[Recording] Process error: ${err.message}`);
+    });
+
     (proc as any)._tempPath = tempPath;
+    (proc as any)._stderr = () => stderrOutput;
 
     activeRecordings.set(deviceId, proc);
-    return `Recording started on iOS (saving temporarily to ${tempPath})`;
+
+    // simctl writes "Recording started" to stderr when ready
+    const ready = await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => resolve(proc.exitCode === null), 5000);
+      const check = () => {
+        if (stderrOutput.includes("Recording started")) {
+          clearTimeout(timeout);
+          resolve(true);
+        } else if (proc.exitCode !== null) {
+          clearTimeout(timeout);
+          resolve(false);
+        }
+      };
+      proc.stderr.on("data", check);
+      proc.on("close", check);
+    });
+
+    if (!ready) {
+      activeRecordings.delete(deviceId);
+      throw new Error(`Recording failed to start: ${stderrOutput}`);
+    }
+
+    return `Recording started on iOS (saving to ${tempPath})`;
   }
 }
 
@@ -218,20 +247,21 @@ export async function stopRecording(
   } else {
     try {
       const tempPath = (proc as any)._tempPath;
+      const getStderr = (proc as any)._stderr;
 
-      // 1. Kill simctl record-video
       proc.kill("SIGINT");
 
-      // 2. Wait for file to finalize
-      await new Promise((r) => setTimeout(r, 2000));
+      // Wait for simctl to finalize the mp4 container
+      await new Promise((r) => setTimeout(r, 3000));
 
-      // 3. Move/Copy to final destination
       if (fs.existsSync(tempPath)) {
         fs.copyFileSync(tempPath, absolutePath);
         fs.unlinkSync(tempPath);
       } else {
+        const stderr = getStderr ? getStderr() : "";
         throw new Error(
-          "Temporary recording file not found. Recording might have failed to start."
+          `Temporary recording file not found at ${tempPath}.` +
+          (stderr ? ` stderr: ${stderr}` : " Recording may have failed to start — check that the simulator is booted and the codec is supported.")
         );
       }
 
